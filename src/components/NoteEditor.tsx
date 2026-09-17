@@ -18,9 +18,11 @@ import {
 import { ImageIcon, PlusIcon, TrashIcon } from "./icons";
 
 const THROW_TYPES = ["左键", "右键", "左右键", "Jump Throw", "Run Throw", "Walk Throw"] as const;
-const DEFAULT_TAGS = ["默认道具", "单人烟", "进攻", "防守", "残局", "必学"] as const;
+const DEFAULT_COMMON_TAGS = ["默认道具", "进攻", "防守", "残局", "必学"] as const;
+const COMMON_TAGS_STORAGE_KEY = "cs-notes.common-tags";
 const MAX_TAGS = 12;
 const MAX_TAG_LENGTH = 24;
+const MAX_COMMON_TAGS = 20;
 
 type RequiredField = "title" | "mapName" | "side" | "grenadeType";
 
@@ -62,6 +64,31 @@ function fileName(path: string): string {
 
 function cleanTag(value: string): string {
   return value.trim().replace(/^#+/, "").trim();
+}
+
+function normalizeTags(values: unknown[]): string[] {
+  const unique = new Set<string>();
+  const normalized: string[] = [];
+  values.forEach((value) => {
+    if (typeof value !== "string") return;
+    const tag = cleanTag(value);
+    const key = tag.toLocaleLowerCase("zh-CN");
+    if (!tag || tag.length > MAX_TAG_LENGTH || unique.has(key)) return;
+    unique.add(key);
+    normalized.push(tag);
+  });
+  return normalized.slice(0, MAX_COMMON_TAGS);
+}
+
+function loadCommonTags(): string[] {
+  try {
+    const saved = window.localStorage.getItem(COMMON_TAGS_STORAGE_KEY);
+    if (saved === null) return [...DEFAULT_COMMON_TAGS];
+    const parsed: unknown = JSON.parse(saved);
+    return Array.isArray(parsed) ? normalizeTags(parsed) : [...DEFAULT_COMMON_TAGS];
+  } catch {
+    return [...DEFAULT_COMMON_TAGS];
+  }
 }
 
 function suggestedCaptureType(index: number): ImageType {
@@ -117,6 +144,10 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
   const [tags, setTags] = useState<string[]>(() => note?.tags.map((tag) => tag.name) ?? []);
   const [tagDraft, setTagDraft] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
+  const [commonTags, setCommonTags] = useState<string[]>(loadCommonTags);
+  const [isEditingCommonTags, setIsEditingCommonTags] = useState(false);
+  const [commonTagDraft, setCommonTagDraft] = useState("");
+  const [commonTagError, setCommonTagError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RequiredField, string>>>({});
   const [imageError, setImageError] = useState<string | null>(null);
   const [isPickingImages, setIsPickingImages] = useState(false);
@@ -126,13 +157,23 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
   const seenCapturedPaths = useRef(new Set(capturedImagePaths));
   const tagSuggestions = useMemo(() => {
     const selected = new Set(tags.map((tag) => tag.toLocaleLowerCase("zh-CN")));
-    const unique = new Map<string, string>();
-    [...DEFAULT_TAGS, ...availableTags.map((tag) => tag.name)].forEach((tag) => {
-      const key = tag.toLocaleLowerCase("zh-CN");
-      if (!selected.has(key) && !unique.has(key)) unique.set(key, tag);
-    });
-    return [...unique.values()];
-  }, [availableTags, tags]);
+    return commonTags.filter((tag) => !selected.has(tag.toLocaleLowerCase("zh-CN")));
+  }, [commonTags, tags]);
+
+  const availableCommonTagOptions = useMemo(() => {
+    const common = new Set(commonTags.map((tag) => tag.toLocaleLowerCase("zh-CN")));
+    return availableTags
+      .map((tag) => tag.name)
+      .filter((tag) => !common.has(tag.toLocaleLowerCase("zh-CN")));
+  }, [availableTags, commonTags]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COMMON_TAGS_STORAGE_KEY, JSON.stringify(commonTags));
+    } catch {
+      // 存储不可用时仍保留当前编辑会话中的设置。
+    }
+  }, [commonTags]);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -244,6 +285,38 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
       addTag(tagDraft);
     } else if (event.key === "Backspace" && !tagDraft && tags.length > 0) {
       removeTag(tags[tags.length - 1]);
+    }
+  };
+
+  const addCommonTag = () => {
+    const tag = cleanTag(commonTagDraft);
+    if (!tag) return;
+    if (tag.length > MAX_TAG_LENGTH) {
+      setCommonTagError(`每个标签最多 ${MAX_TAG_LENGTH} 个字符`);
+      return;
+    }
+    if (commonTags.length >= MAX_COMMON_TAGS) {
+      setCommonTagError(`常用标签最多设置 ${MAX_COMMON_TAGS} 个`);
+      return;
+    }
+    if (commonTags.some((current) => current.toLocaleLowerCase("zh-CN") === tag.toLocaleLowerCase("zh-CN"))) {
+      setCommonTagError("该标签已在常用标签中");
+      return;
+    }
+    setCommonTags((current) => [...current, tag]);
+    setCommonTagDraft("");
+    setCommonTagError(null);
+  };
+
+  const removeCommonTag = (tagToRemove: string) => {
+    setCommonTags((current) => current.filter((tag) => tag !== tagToRemove));
+    setCommonTagError(null);
+  };
+
+  const handleCommonTagKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" || event.key === "," || event.key === "，") {
+      event.preventDefault();
+      addCommonTag();
     }
   };
 
@@ -421,19 +494,63 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                     }}
                     onKeyDown={handleTagKeyDown}
                     onBlur={() => addTag(tagDraft)}
-                    placeholder={tags.length === 0 ? "输入标签后按 Enter，例如：单人烟" : "继续添加…"}
+                    placeholder={tags.length === 0 ? "输入标签后按 Enter，例如：关键道具" : "继续添加…"}
                     maxLength={MAX_TAG_LENGTH + 1}
                     disabled={isSaving || tags.length >= MAX_TAGS}
                     aria-label="添加标签"
                   />
                 </div>
                 {tagError && <small className="tag-error">{tagError}</small>}
-                {tagSuggestions.length > 0 && tags.length < MAX_TAGS && (
-                  <div className="tag-suggestions">
-                    <span>常用标签</span>
-                    {tagSuggestions.map((tag) => (
-                      <button type="button" key={tag} onClick={() => addTag(tag)} disabled={isSaving}>+ {tag}</button>
-                    ))}
+                <div className="tag-suggestions">
+                  <span>常用标签</span>
+                  {!isEditingCommonTags && tags.length < MAX_TAGS && tagSuggestions.map((tag) => (
+                    <button type="button" key={tag} onClick={() => addTag(tag)} disabled={isSaving}>+ {tag}</button>
+                  ))}
+                  {!isEditingCommonTags && tagSuggestions.length === 0 && <small>暂无可添加标签</small>}
+                  <button
+                    type="button"
+                    className="common-tags-edit-button"
+                    onClick={() => {
+                      setIsEditingCommonTags((current) => !current);
+                      setCommonTagDraft("");
+                      setCommonTagError(null);
+                    }}
+                    disabled={isSaving}
+                  >
+                    {isEditingCommonTags ? "完成" : "修改"}
+                  </button>
+                </div>
+                {isEditingCommonTags && (
+                  <div className="common-tags-manager">
+                    <div className="common-tags-list">
+                      {commonTags.map((tag) => (
+                        <span key={tag}>
+                          #{tag}
+                          <button type="button" onClick={() => removeCommonTag(tag)} disabled={isSaving} aria-label={`从常用标签中删除 ${tag}`}>×</button>
+                        </span>
+                      ))}
+                      {commonTags.length === 0 && <small>还没有常用标签</small>}
+                    </div>
+                    <div className="common-tag-add-row">
+                      <input
+                        value={commonTagDraft}
+                        onChange={(event) => {
+                          setCommonTagDraft(event.target.value);
+                          setCommonTagError(null);
+                        }}
+                        onKeyDown={handleCommonTagKeyDown}
+                        placeholder="输入要添加的常用标签"
+                        maxLength={MAX_TAG_LENGTH + 1}
+                        list="available-common-tags"
+                        disabled={isSaving || commonTags.length >= MAX_COMMON_TAGS}
+                        aria-label="添加常用标签"
+                      />
+                      <datalist id="available-common-tags">
+                        {availableCommonTagOptions.map((tag) => <option value={tag} key={tag} />)}
+                      </datalist>
+                      <button type="button" onClick={addCommonTag} disabled={isSaving || !commonTagDraft.trim() || commonTags.length >= MAX_COMMON_TAGS}>添加</button>
+                    </div>
+                    {commonTagError && <small className="tag-error">{commonTagError}</small>}
                   </div>
                 )}
               </div>

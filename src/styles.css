@@ -211,9 +211,23 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .tag-error { color: #df7d82; font-size: 9px; }
 .tag-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .tag-suggestions > span { margin-right: 2px; color: var(--subtle); font-size: 9px; }
+.tag-suggestions > small { color: #68717e; font-size: 9px; }
 .tag-suggestions button { height: 25px; padding: 0 8px; color: #949eac; background: #171b21; border: 1px solid #303641; font-size: 9px; cursor: pointer; }
 .tag-suggestions button:hover { color: #d8dde4; border-color: #596270; }
 .tag-suggestions button:disabled { opacity: .45; cursor: wait; }
+.tag-suggestions .common-tags-edit-button { margin-left: auto; color: #c7a978; border-color: #594a35; }
+.common-tags-manager { display: grid; gap: 8px; padding: 10px; background: #111419; border: 1px solid #303641; }
+.common-tags-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.common-tags-list > span { height: 25px; display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 8px; color: #c5a978; background: rgba(223,155,66,.07); border: 1px solid rgba(223,155,66,.2); font-size: 9px; }
+.common-tags-list > span button { width: 17px; height: 17px; padding: 0; color: #83735e; background: transparent; border: 0; font-size: 13px; line-height: 1; cursor: pointer; }
+.common-tags-list > span button:hover { color: #e5bd80; }
+.common-tags-list > small { color: #68717e; font-size: 9px; }
+.common-tag-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.common-tag-add-row input { min-width: 0; height: 30px; padding: 0 9px; color: #dce1e8; background: #0d1014; border: 1px solid #303641; outline: 0; font-size: 10px; }
+.common-tag-add-row input:focus { border-color: #81643d; }
+.common-tag-add-row input::placeholder { color: #535c69; }
+.common-tag-add-row > button { height: 30px; padding: 0 12px; color: #c7a978; background: #1b1a17; border: 1px solid #594a35; font-size: 9px; cursor: pointer; }
+.common-tag-add-row > button:disabled, .common-tags-list button:disabled { opacity: .45; cursor: wait; }
 .form-submit-error { padding: 10px 12px; color: #e39a9e; background: rgba(228,109,114,.08); border: 1px solid rgba(228,109,114,.25); font-size: 10px; line-height: 1.5; }
 .image-form-section { padding-bottom: 18px; }
 .continuous-capture-tip { display: flex; align-items: center; gap: 5px; margin-bottom: 9px; padding: 7px 9px; color: #818b99; background: rgba(211,164,95,.06); border-left: 2px solid #8b6838; font-size: 9px; }

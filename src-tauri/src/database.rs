@@ -169,6 +169,7 @@ impl Database {
             .map_err(|error| format!("无法初始化数据库：{error}"))?;
         ensure_image_type_column(&connection)?;
         ensure_annotation_columns(&connection)?;
+        cleanup_orphan_tags(&connection)?;
         Ok(())
     }
 
@@ -484,7 +485,7 @@ impl Database {
     }
 
     pub fn delete_note(&self, id: i64) -> DbResult<()> {
-        let connection = self.open()?;
+        let mut connection = self.open()?;
         let image_paths = {
             let mut statement = connection
                 .prepare(
@@ -505,12 +506,15 @@ impl Database {
                 .flatten()
                 .collect::<Vec<_>>()
         };
-        let changed = connection
+        let transaction = connection.transaction().map_err(database_error)?;
+        let changed = transaction
             .execute("DELETE FROM notes WHERE id = ?1", [id])
             .map_err(database_error)?;
         if changed == 0 {
             return Err("要删除的笔记不存在".to_string());
         }
+        cleanup_orphan_tags(&transaction)?;
+        transaction.commit().map_err(database_error)?;
         for stored_path in image_paths {
             self.image_store.remove_best_effort(&stored_path);
         }
@@ -875,6 +879,20 @@ fn replace_note_tags(transaction: &Transaction<'_>, note_id: i64, tags: &[String
             )
             .map_err(database_error)?;
     }
+    cleanup_orphan_tags(transaction)?;
+    Ok(())
+}
+
+fn cleanup_orphan_tags(connection: &Connection) -> DbResult<()> {
+    connection
+        .execute(
+            "DELETE FROM tags
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM note_tags WHERE note_tags.tag_id = tags.id
+             )",
+            [],
+        )
+        .map_err(database_error)?;
     Ok(())
 }
 
@@ -1082,8 +1100,12 @@ mod tests {
         let relation_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM note_tags", [], |row| row.get(0))
             .expect("relation count should load");
+        let tag_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))
+            .expect("tag count should load");
         assert_eq!(image_count, 0);
         assert_eq!(relation_count, 0);
+        assert_eq!(tag_count, 0);
         drop(connection);
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
@@ -1095,6 +1117,22 @@ mod tests {
         let second = database.create_tag("smoke").expect("tag should be reused");
         assert_eq!(first.id, second.id);
         assert_eq!(database.get_tags().expect("tags should load").len(), 1);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn initialization_removes_legacy_orphan_tags() {
+        let (database, directory) = test_database();
+        database
+            .create_tag("旧版残留标签")
+            .expect("orphan tag should be created");
+        assert_eq!(database.get_tags().expect("tags should load").len(), 1);
+
+        database
+            .initialize()
+            .expect("reinitialization should clean orphan tags");
+
+        assert!(database.get_tags().expect("tags should load").is_empty());
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
