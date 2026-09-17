@@ -108,7 +108,13 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         if shortcut.key == Code::Escape {
-                            screenshot::cancel_active_capture(app);
+                            // Unregistering the temporary Esc shortcuts takes the
+                            // same plugin lock held by this callback, so defer it
+                            // until after the callback returns.
+                            let app = app.clone();
+                            std::thread::spawn(move || {
+                                screenshot::cancel_active_capture(&app);
+                            });
                         } else {
                             screenshot::begin_capture(app.clone());
                         }

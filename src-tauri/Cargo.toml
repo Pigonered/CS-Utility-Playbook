@@ -1,6 +1,6 @@
 [package]
 name = "cs-lineup-notebook"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 description = "A CS2 lineup notebook for Windows"
 authors = ["CS道具战术本"]
 edition = "2021"

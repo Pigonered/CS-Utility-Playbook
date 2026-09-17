@@ -13,12 +13,16 @@ use uuid::Uuid;
 
 #[cfg(windows)]
 use windows_sys::Win32::{
+    Foundation::HWND,
     Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
         GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT,
         DIB_RGB_COLORS, SRCCOPY,
     },
-    UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN},
+    UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetSystemMetrics, IsIconic, IsWindow, SetForegroundWindow,
+        ShowWindowAsync, SM_CXSCREEN, SM_CYSCREEN, SW_RESTORE,
+    },
 };
 
 const OVERLAY_LABEL: &str = "screenshot-overlay";
@@ -63,6 +67,7 @@ struct CaptureState {
     next_id: u64,
     active_id: Option<u64>,
     session: Option<CaptureSession>,
+    previous_foreground_window: Option<isize>,
 }
 
 #[derive(Debug)]
@@ -92,7 +97,7 @@ impl ScreenshotManager {
         })
     }
 
-    fn begin(&self) -> Result<u64, String> {
+    fn begin(&self, previous_foreground_window: Option<isize>) -> Result<u64, String> {
         let mut state = self
             .state
             .lock()
@@ -104,6 +109,7 @@ impl ScreenshotManager {
         let capture_id = state.next_id;
         state.active_id = Some(capture_id);
         state.session = None;
+        state.previous_foreground_window = previous_foreground_window;
         Ok(capture_id)
     }
 
@@ -128,24 +134,34 @@ impl ScreenshotManager {
             .ok_or_else(|| "没有可用的截图画面".to_string())
     }
 
-    fn finish(&self) -> Result<Option<CaptureSession>, String> {
+    fn finish(&self) -> Result<(Option<CaptureSession>, Option<isize>), String> {
         let mut state = self
             .state
             .lock()
             .map_err(|_| "截图状态不可用".to_string())?;
         state.active_id = None;
-        Ok(state.session.take())
+        Ok((
+            state.session.take(),
+            state.previous_foreground_window.take(),
+        ))
     }
 
-    fn reset_after_error(&self, capture_id: u64) -> Result<(bool, Option<CaptureSession>), String> {
+    fn reset_after_error(
+        &self,
+        capture_id: u64,
+    ) -> Result<(bool, Option<CaptureSession>, Option<isize>), String> {
         let Ok(mut state) = self.state.lock() else {
             return Err("截图状态不可用".to_string());
         };
         if state.active_id != Some(capture_id) {
-            return Ok((false, None));
+            return Ok((false, None, None));
         }
         state.active_id = None;
-        Ok((true, state.session.take()))
+        Ok((
+            true,
+            state.session.take(),
+            state.previous_foreground_window.take(),
+        ))
     }
 
     fn raw_path(&self) -> PathBuf {
@@ -169,14 +185,15 @@ impl ScreenshotManager {
 
 pub fn begin_capture(app: AppHandle) {
     let manager = app.state::<ScreenshotManager>();
-    let Ok(capture_id) = manager.begin() else {
+    let Ok(capture_id) = manager.begin(current_foreground_window()) else {
         return;
     };
-    // Keep cancellation outside the WebView event loop so Esc also works when a
-    // fullscreen game interferes with focus or while the overlay is still loading.
-    register_cancel_shortcuts(&app);
 
     std::thread::spawn(move || {
+        // The global-shortcut plugin holds its shortcut-map lock while invoking
+        // handlers. Register on this worker only after the triggering handler has
+        // returned, otherwise pressing the capture shortcut deadlocks the app.
+        register_cancel_shortcuts(&app);
         let started_at = Instant::now();
         if let Err(error) = capture_primary_monitor(&app, capture_id) {
             fail_capture(&app, capture_id, error);
@@ -230,7 +247,9 @@ pub fn prepare_overlay(app: &AppHandle) -> Result<(), String> {
 
 fn fail_capture(app: &AppHandle, capture_id: u64, message: String) {
     let manager = app.state::<ScreenshotManager>();
-    let Ok((was_active, session)) = manager.reset_after_error(capture_id) else {
+    let Ok((was_active, session, previous_foreground_window)) =
+        manager.reset_after_error(capture_id)
+    else {
         return;
     };
     if !was_active {
@@ -242,6 +261,7 @@ fn fail_capture(app: &AppHandle, capture_id: u64, message: String) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
+    restore_foreground_window(previous_foreground_window);
     unregister_cancel_shortcuts(app);
     let _ = app.emit_to("main", "screenshot-error", message);
 }
@@ -285,7 +305,7 @@ pub fn complete_capture(
         .map_err(|error| format!("无法保存框选截图：{error}"))?;
 
     remove_file_if_present(Path::new(&session.image_path));
-    manager.finish()?;
+    let (_, previous_foreground_window) = manager.finish()?;
 
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
@@ -301,6 +321,8 @@ pub fn complete_capture(
             let _ = main_window.unminimize();
             let _ = main_window.set_focus();
         }
+    } else {
+        restore_foreground_window(previous_foreground_window);
     }
 
     let path = result_path.to_string_lossy().into_owned();
@@ -324,15 +346,50 @@ pub fn cancel_active_capture(app: &AppHandle) {
 }
 
 fn cancel_capture_inner(app: &AppHandle, manager: &ScreenshotManager) -> Result<(), String> {
-    if let Some(session) = manager.finish()? {
+    let (session, previous_foreground_window) = manager.finish()?;
+    if let Some(session) = session {
         remove_file_if_present(Path::new(&session.image_path));
     }
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
+    restore_foreground_window(previous_foreground_window);
     unregister_cancel_shortcuts(app);
     Ok(())
 }
+
+#[cfg(windows)]
+fn current_foreground_window() -> Option<isize> {
+    let window = unsafe { GetForegroundWindow() };
+    (!window.is_null()).then_some(window as isize)
+}
+
+#[cfg(not(windows))]
+fn current_foreground_window() -> Option<isize> {
+    None
+}
+
+#[cfg(windows)]
+fn restore_foreground_window(window: Option<isize>) {
+    let Some(window) = window else {
+        return;
+    };
+    let window = window as HWND;
+    if unsafe { IsWindow(window) } != 0 {
+        // Hiding the active overlay makes Windows prefer another window from this
+        // process (usually the notebook). Explicitly return focus to the app that
+        // was active when the global screenshot shortcut was pressed.
+        unsafe {
+            if IsIconic(window) != 0 {
+                ShowWindowAsync(window, SW_RESTORE);
+            }
+            SetForegroundWindow(window);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn restore_foreground_window(_window: Option<isize>) {}
 
 #[cfg(windows)]
 fn capture_primary_to_bmp(path: &Path) -> Result<(u32, u32), String> {
