@@ -1,0 +1,29 @@
+# JavaScript dependencies and build output
+node_modules/
+dist/
+
+# Rust / Tauri build output
+src-tauri/target/
+
+# Local environment and runtime data
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~

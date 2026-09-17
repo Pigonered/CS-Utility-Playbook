@@ -1,0 +1,126 @@
+mod backup;
+mod database;
+mod image_store;
+mod screenshot;
+
+use database::Database;
+use tauri::Manager;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+#[cfg(windows)]
+fn apply_windows_frame_colors(window: &tauri::WebviewWindow) -> Result<(), String> {
+    use std::{ffi::c_void, mem::size_of};
+    use windows_sys::Win32::{
+        Foundation::HWND,
+        Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+        },
+    };
+
+    fn set_attribute<T>(hwnd: HWND, attribute: i32, value: &T) -> Result<(), String> {
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                attribute as u32,
+                value as *const T as *const c_void,
+                size_of::<T>() as u32,
+            )
+        };
+
+        if result < 0 {
+            Err(format!(
+                "DWM 属性 {attribute} 设置失败：HRESULT {result:#x}"
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as HWND;
+    let dark_mode = 1_i32;
+    // COLORREF uses 0x00BBGGRR. Keep the native frame aligned with the web UI palette.
+    let caption_color = 0x001d_1815_u32; // #15181d
+    let border_color = 0x003a_302a_u32; // #2a303a
+    let text_color = 0x00f7_f1ed_u32; // #edf1f7
+
+    set_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark_mode)?;
+    set_attribute(hwnd, DWMWA_CAPTION_COLOR, &caption_color)?;
+    set_attribute(hwnd, DWMWA_BORDER_COLOR, &border_color)?;
+    set_attribute(hwnd, DWMWA_TEXT_COLOR, &text_color)?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        screenshot::begin_capture(app.clone());
+                    }
+                })
+                .build(),
+        )
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                window.app_handle().exit(0);
+            }
+        })
+        .setup(|app| {
+            let app_data_directory = app.path().app_data_dir()?;
+            let database = Database::new(app_data_directory.join("notebook.db"));
+            database.initialize().map_err(std::io::Error::other)?;
+            app.manage(database);
+            let backup_service = backup::BackupService::new(app_data_directory.clone());
+            app.manage(backup_service.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(error) = backup_service.create_automatic_if_due() {
+                    eprintln!("无法创建自动备份：{error}");
+                }
+            });
+            let screenshot_manager = screenshot::ScreenshotManager::new(app_data_directory)
+                .map_err(std::io::Error::other)?;
+            app.manage(screenshot_manager);
+            screenshot::prepare_overlay(app.handle()).map_err(std::io::Error::other)?;
+            if let Some(main_window) = app.get_webview_window("main") {
+                main_window.set_theme(Some(tauri::Theme::Dark))?;
+                #[cfg(windows)]
+                if let Err(error) = apply_windows_frame_colors(&main_window) {
+                    eprintln!("无法应用 Windows 窗口配色：{error}");
+                }
+                main_window.show()?;
+                main_window.set_focus()?;
+            }
+
+            if let Err(error) = app.global_shortcut().register("Alt+Q") {
+                eprintln!("无法注册全局快捷键 Alt+Q：{error}");
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            database::get_notes,
+            database::get_note,
+            database::create_note,
+            database::update_note,
+            database::save_note_with_images,
+            database::delete_note,
+            database::save_image_annotation,
+            database::get_tags,
+            database::create_tag,
+            backup::export_backup,
+            backup::restore_backup,
+            backup::get_backup_status,
+            screenshot::get_capture_session,
+            screenshot::show_capture_overlay,
+            screenshot::complete_capture,
+            screenshot::cancel_capture,
+            screenshot::discard_temp_images,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running CS Lineup Notebook");
+}

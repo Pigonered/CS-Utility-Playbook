@@ -1,0 +1,103 @@
+.capture-mode {
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+  background: #05070a;
+}
+
+.capture-mode #root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.capture-surface {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  background: #05070a;
+}
+
+.capture-background,
+.capture-idle-mask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.capture-background {
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.capture-idle-mask {
+  background: rgba(2, 5, 9, 0.34);
+  pointer-events: none;
+}
+
+.capture-selection {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 2px solid #f3c243;
+  box-shadow: 0 0 0 9999px rgba(2, 5, 9, 0.48), 0 0 0 1px rgba(0, 0, 0, 0.55) inset;
+  pointer-events: none;
+}
+
+.capture-selection span {
+  position: absolute;
+  right: -2px;
+  bottom: -28px;
+  padding: 4px 8px;
+  border-radius: 0 0 4px 4px;
+  color: #151a20;
+  background: #f3c243;
+  font: 600 12px/1.2 "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.capture-help {
+  position: fixed;
+  z-index: 4;
+  top: 24px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #f5f7f9;
+  background: rgba(14, 18, 23, 0.88);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.24);
+  font-family: "Segoe UI", sans-serif;
+  pointer-events: none;
+}
+
+.capture-help strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.capture-help span {
+  color: #aeb7c2;
+  font-size: 12px;
+}
+
+.capture-error {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border: 1px solid rgba(235, 87, 87, 0.45);
+  border-radius: 7px;
+  color: #ffd7d7;
+  background: rgba(65, 20, 23, 0.94);
+  font: 500 13px/1.4 "Segoe UI", sans-serif;
+  pointer-events: none;
+}
