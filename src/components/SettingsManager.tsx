@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { backupApi, type BackupOperationResult, type BackupStatus } from "../services/backup";
 import { settingsApi, type AppSettings } from "../services/settings";
-import { CloseIcon, DatabaseIcon, SettingsIcon } from "./icons";
+import { CloseIcon, DatabaseIcon, GithubIcon, InfoIcon, SettingsIcon } from "./icons";
 
 interface SettingsManagerProps {
   settings: AppSettings;
@@ -11,6 +11,7 @@ interface SettingsManagerProps {
 }
 
 type BusyAction = "directory" | "shortcut" | "background" | "export" | "restore" | null;
+type SettingsView = "settings" | "about";
 
 function formatDate(value: string | null): string {
   if (!value) return "尚未创建";
@@ -73,6 +74,7 @@ function ShortcutKeys({ shortcut }: { shortcut: string | null }) {
 }
 
 export function SettingsManager({ settings, onSettingsChange, onClose, onRestored }: SettingsManagerProps) {
+  const [activeView, setActiveView] = useState<SettingsView>("settings");
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +245,27 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
           <button type="button" className="editor-close" onClick={onClose} disabled={Boolean(busy) || isBinding} aria-label="关闭设置"><CloseIcon /></button>
         </header>
 
-        <div className="settings-content">
+        <div className="settings-body">
+          <nav className="settings-navigation" aria-label="设置页面">
+            <button
+              type="button"
+              className={activeView === "settings" ? "active" : ""}
+              onClick={() => setActiveView("settings")}
+              aria-current={activeView === "settings" ? "page" : undefined}
+            >
+              <SettingsIcon /><span>设置</span>
+            </button>
+            <button
+              type="button"
+              className={activeView === "about" ? "active" : ""}
+              onClick={() => setActiveView("about")}
+              aria-current={activeView === "about" ? "page" : undefined}
+            >
+              <InfoIcon /><span>关于</span>
+            </button>
+          </nav>
+
+          {activeView === "settings" ? <div className="settings-content">
           <section className="settings-section">
             <div className="settings-section-heading"><SettingsIcon /><div><strong>常规设置</strong><small>后台运行、存储与快捷键</small></div></div>
             <div className="settings-card">
@@ -324,10 +346,54 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
 
           {error && <div className="backup-message error" role="alert">{error}</div>}
           {message && <div className="backup-message success" role="status">{message}</div>}
+          </div> : <div className="settings-content about-content">
+            <section className="about-hero">
+              <div className="about-mark"><InfoIcon /></div>
+              <div>
+                <span className="eyebrow">CS UTILITY PLAYBOOK</span>
+                <h3>关于 CS道具战术本</h3>
+                <p>当前版本 <strong>0.1.0 Beta</strong></p>
+              </div>
+            </section>
+
+            <div className="about-grid">
+              <section className="about-card">
+                <span className="about-label">开发者</span>
+                <strong>Pigonered</strong>
+              </section>
+              <section className="about-card">
+                <span className="about-label">项目主页</span>
+                <a href="https://github.com/Pigonered/CS-Utility-Playbook" target="_blank" rel="noreferrer">
+                  <GithubIcon />
+                  <span>GitHub: <code>Pigonered/CS-Utility-Playbook</code></span>
+                </a>
+              </section>
+            </div>
+
+            <section className="about-section">
+              <h4>反馈与建议</h4>
+              <p>如果遇到 Bug、功能异常或有改进建议，可以通过 GitHub Issues 反馈。</p>
+            </section>
+
+            <section className="about-section">
+              <h4>数据说明</h4>
+              <p>所有笔记、图片和设置默认保存在本地设备中。请定期备份重要数据。</p>
+            </section>
+
+            <section className="about-section about-disclaimer">
+              <h4>免责声明</h4>
+              <p>本软件为独立开发的第三方工具，与 Valve Corporation 或 Counter-Strike 2 官方无隶属、授权或合作关系。</p>
+              <p>Counter-Strike、Counter-Strike 2 及相关商标归其各自权利人所有。</p>
+            </section>
+
+            <code className="about-tech">Built with Tauri, React, TypeScript and Rust.</code>
+
+            <blockquote className="about-beta-note">当前版本处于测试阶段，功能和数据结构可能在后续版本中发生变化。</blockquote>
+          </div>}
         </div>
 
         <footer className="settings-footer">
-          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : "设置会自动保存"}</span>
+          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.0 Beta"}</span>
           <button type="button" className="secondary-button" onClick={onClose} disabled={Boolean(busy) || isBinding}>完成</button>
         </footer>
       </section>
