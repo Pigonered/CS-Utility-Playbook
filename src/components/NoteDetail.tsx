@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type WheelEvent as ReactWheelEvent } from "react";
 import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteImage } from "../types/note";
 import { CloseIcon, CrosshairIcon, ImageIcon, PencilIcon, TrashIcon } from "./icons";
 
@@ -31,15 +31,53 @@ function formatUpdatedAt(value: string): string {
 
 export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelete, onTagSelect, onAnnotate }: NoteDetailProps) {
   const [viewerImage, setViewerImage] = useState<string | null>(null);
+  const [viewerScale, setViewerScale] = useState(1);
+  const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
+
+  const resetViewerTransform = () => {
+    setViewerScale(1);
+    setViewerOffset({ x: 0, y: 0 });
+  };
+
+  const openViewer = (path: string) => {
+    resetViewerTransform();
+    setViewerImage(path);
+  };
+
+  const closeViewer = () => {
+    setViewerImage(null);
+    resetViewerTransform();
+  };
+
+  const handleViewerWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const nextScale = Math.min(5, Math.max(0.5, viewerScale * factor));
+    if (nextScale === viewerScale) return;
+
+    if (nextScale <= 1) {
+      setViewerOffset({ x: 0, y: 0 });
+    } else {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const pointerX = event.clientX - bounds.left - bounds.width / 2;
+      const pointerY = event.clientY - bounds.top - bounds.height / 2;
+      const ratio = nextScale / viewerScale;
+      setViewerOffset((current) => ({
+        x: pointerX - (pointerX - current.x) * ratio,
+        y: pointerY - (pointerY - current.y) * ratio,
+      }));
+    }
+    setViewerScale(nextScale);
+  };
 
   useEffect(() => {
-    setViewerImage(null);
+    closeViewer();
   }, [note?.id]);
 
   useEffect(() => {
     if (!viewerImage) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setViewerImage(null);
+      if (event.key === "Escape") closeViewer();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -107,7 +145,7 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
                   <button
                     type="button"
                     className="note-image-preview"
-                    onClick={() => setViewerImage(image.annotatedPath ?? image.imagePath)}
+                    onClick={() => openViewer(image.annotatedPath ?? image.imagePath)}
                     title="点击查看大图"
                   >
                     <img src={convertFileSrc(image.annotatedPath ?? image.imagePath)} alt={`${note.title} ${image.imageType}图 ${index + 1}`} />
@@ -115,7 +153,7 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
                   <footer>
                     <span><ImageIcon />图片 {index + 1}：{image.imageType}{image.annotatedPath && <i>已标注</i>}</span>
                     <div>
-                      <button type="button" onClick={() => setViewerImage(image.annotatedPath ?? image.imagePath)}>查看</button>
+                      <button type="button" onClick={() => openViewer(image.annotatedPath ?? image.imagePath)}>查看</button>
                       <button type="button" className="annotate-button" onClick={() => onAnnotate(image)}>编辑图片</button>
                     </div>
                   </footer>
@@ -142,11 +180,28 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
         </section>
       </div>
       {viewerImage && (
-        <div className="image-viewer" role="dialog" aria-modal="true" aria-label="图片大图预览" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setViewerImage(null);
-        }}>
-          <button type="button" onClick={() => setViewerImage(null)} aria-label="关闭大图"><CloseIcon /></button>
-          <img src={convertFileSrc(viewerImage)} alt="笔记大图预览" />
+        <div
+          className="image-viewer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="图片大图预览"
+          onWheel={handleViewerWheel}
+          onDoubleClick={resetViewerTransform}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeViewer();
+          }}
+        >
+          <button type="button" onClick={closeViewer} aria-label="关闭大图"><CloseIcon /></button>
+          <img
+            src={convertFileSrc(viewerImage)}
+            alt="笔记大图预览"
+            draggable={false}
+            style={{ transform: `translate(${viewerOffset.x}px, ${viewerOffset.y}px) scale(${viewerScale})` }}
+          />
+          <div className="image-viewer-zoom" role="status">
+            <strong>{Math.round(viewerScale * 100)}%</strong>
+            <span>滚轮缩放 · 双击还原</span>
+          </div>
         </div>
       )}
     </main>

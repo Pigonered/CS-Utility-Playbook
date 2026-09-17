@@ -160,11 +160,13 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .tag-list small { color: var(--subtle); font-size: 10px; }
 .empty-detail { place-items: center; align-content: center; padding: 30px; color: var(--subtle); text-align: center; }
 .empty-detail > svg { width: 42px; height: 42px; color: #383f49; }.empty-detail h2 { margin: 16px 0 4px; color: var(--muted); font-size: 16px; }.empty-detail p { max-width: 320px; font-size: 11px; line-height: 1.6; }
-.image-viewer { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 48px; background: rgba(4,5,7,.94); cursor: zoom-out; }
-.image-viewer > img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 20px 70px rgba(0,0,0,.55); cursor: default; }
+.image-viewer { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; overflow: hidden; padding: 48px; background: rgba(4,5,7,.94); cursor: zoom-out; }
+.image-viewer > img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; box-shadow: 0 20px 70px rgba(0,0,0,.55); cursor: default; user-select: none; will-change: transform; }
 .image-viewer > button { position: absolute; top: 18px; right: 21px; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: #c5ccd5; background: #171b21; border: 1px solid #434b57; cursor: pointer; }
 .image-viewer > button svg { display: block; width: 18px; height: 18px; stroke-width: 1.8; }
 .image-viewer > button:hover { color: #fff; border-color: #737d8b; }
+.image-viewer-zoom { position: absolute; bottom: 18px; left: 50%; display: flex; align-items: center; gap: 9px; padding: 7px 10px; color: #8f99a7; background: rgba(23,27,33,.92); border: 1px solid #3a424e; transform: translateX(-50%); font-size: 9px; pointer-events: none; }
+.image-viewer-zoom strong { min-width: 34px; color: #d9dee5; font-family: Consolas, monospace; font-size: 10px; text-align: right; }
 .toast { position: fixed; z-index: 10; right: 22px; bottom: 22px; padding: 11px 15px; color: #dfd4c3; background: #25211b; border: 1px solid #5d4a30; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-size: 12px; animation: toast-in .16s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
