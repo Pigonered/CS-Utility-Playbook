@@ -3,9 +3,12 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { pickImageFiles } from "../services/images";
 import {
   GRENADE_TYPES,
+  GRENADE_TYPE_LABELS,
   IMAGE_TYPES,
   MAPS,
   SIDES,
+  THROW_TYPES,
+  THROW_TYPE_LABELS,
   type GrenadeType,
   type ImageType,
   type MapName,
@@ -17,7 +20,6 @@ import {
 } from "../types/note";
 import { ImageIcon, PlusIcon, TrashIcon } from "./icons";
 
-const THROW_TYPES = ["左键", "右键", "左右键", "Jump Throw", "Run Throw", "Walk Throw"] as const;
 const DEFAULT_COMMON_TAGS = ["默认道具", "进攻", "防守", "残局", "必学"] as const;
 const COMMON_TAGS_STORAGE_KEY = "cs-notes.common-tags";
 const MAX_TAGS = 12;
@@ -375,7 +377,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
       <section className="note-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
         <header className="editor-header">
           <div>
-            <span className="eyebrow">{mode === "create" ? "CREATE NOTE" : "EDIT NOTE"}</span>
+            <span className="eyebrow">{mode === "create" ? "新建笔记" : "编辑笔记"}</span>
             <h2 id="editor-title">{mode === "create" ? "新建笔记" : "编辑笔记"}</h2>
             <p>{mode === "create" ? "记录一个新的 CS2 道具瞄点" : "修改当前笔记的基础信息"}</p>
           </div>
@@ -422,7 +424,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                   <span>道具类型 <b>*</b></span>
                   <select value={form.grenadeType} onChange={(event) => setField("grenadeType", event.target.value as GrenadeType | "")} disabled={isSaving}>
                     <option value="">选择道具</option>
-                    {GRENADE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                    {GRENADE_TYPES.map((type) => <option key={type} value={type}>{GRENADE_TYPE_LABELS[type]}</option>)}
                   </select>
                   {fieldErrors.grenadeType && <small className="field-error">{fieldErrors.grenadeType}</small>}
                 </label>
@@ -447,7 +449,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                   <span>投掷方式</span>
                   <select value={form.throwPreset} onChange={(event) => setField("throwPreset", event.target.value)} disabled={isSaving}>
                     <option value="">未设置</option>
-                    {THROW_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                    {THROW_TYPES.map((type) => <option key={type} value={type}>{THROW_TYPE_LABELS[type]}</option>)}
                     <option value="custom">自定义…</option>
                   </select>
                 </label>

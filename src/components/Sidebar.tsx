@@ -1,4 +1,4 @@
-import { GRENADE_TYPES, MAPS, SIDES, type GrenadeType, type MapName, type NoteFilters, type Side, type Tag } from "../types/note";
+import { GRENADE_TYPES, MAPS, SIDES, grenadeTypeLabel, type GrenadeType, type MapName, type NoteFilters, type Side, type Tag } from "../types/note";
 import { CrosshairIcon, GrenadeIcon, MapIcon, ShieldIcon } from "./icons";
 
 interface SidebarProps {
@@ -13,10 +13,11 @@ interface FilterSectionProps<T extends string> {
   items: readonly T[];
   value: T | null;
   onSelect: (value: T | null) => void;
+  renderLabel?: (item: T) => React.ReactNode;
   renderBadge?: (item: T) => React.ReactNode;
 }
 
-function FilterSection<T extends string>({ title, icon, items, value, onSelect, renderBadge }: FilterSectionProps<T>) {
+function FilterSection<T extends string>({ title, icon, items, value, onSelect, renderLabel, renderBadge }: FilterSectionProps<T>) {
   return (
     <section className="filter-section">
       <div className="section-title">{icon}<span>{title}</span></div>
@@ -29,7 +30,7 @@ function FilterSection<T extends string>({ title, icon, items, value, onSelect, 
             onClick={() => onSelect(value === item ? null : item)}
             aria-pressed={value === item}
           >
-            <span>{item}</span>
+            <span>{renderLabel ? renderLabel(item) : item}</span>
             {renderBadge?.(item)}
           </button>
         ))}
@@ -76,6 +77,7 @@ export function Sidebar({ filters, tags, onChange }: SidebarProps) {
         items={GRENADE_TYPES}
         value={filters.grenadeType}
         onSelect={(grenadeType) => onChange({ ...filters, grenadeType })}
+        renderLabel={grenadeTypeLabel}
         renderBadge={(type) => <span className={`grenade-dot ${grenadeClass[type]}`} />}
       />
       {tags.length > 0 && (

@@ -1,4 +1,4 @@
-import type { Note } from "../types/note";
+import { grenadeTypeLabel, type Note } from "../types/note";
 import { ChevronRightIcon } from "./icons";
 
 interface NoteListItemProps {
@@ -21,7 +21,7 @@ export function NoteListItem({ note, selected, onSelect }: NoteListItemProps) {
         <span className="note-meta-row">
           <span>{note.mapName}</span><i />
           <span className={`side-label ${note.side.toLowerCase()}`}>{note.side}</span><i />
-          <span>{note.grenadeType}</span>
+          <span>{grenadeTypeLabel(note.grenadeType)}</span>
         </span>
         <small>{note.startPosition} → {note.targetPosition}</small>
       </span>
@@ -29,4 +29,3 @@ export function NoteListItem({ note, selected, onSelect }: NoteListItemProps) {
     </button>
   );
 }
-

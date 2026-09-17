@@ -331,7 +331,7 @@ export function AnnotationEditor({ image, isSaving, error, onSave, onClose }: An
       <section className="annotation-editor" role="dialog" aria-modal="true" aria-labelledby="annotation-title">
         <header className="annotation-header">
           <div>
-            <span className="eyebrow">IMAGE ANNOTATION</span>
+            <span className="eyebrow">图片标注工具</span>
             <h2 id="annotation-title">图片标注</h2>
             <p>原图会被保留，保存后生成单独的标注版本</p>
           </div>

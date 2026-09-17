@@ -2,11 +2,40 @@ export const MAPS = ["Mirage", "Inferno", "Dust2", "Ancient", "Nuke", "Anubis", 
 export const SIDES = ["T", "CT"] as const;
 export const GRENADE_TYPES = ["Smoke", "Flash", "Molotov", "HE", "Other"] as const;
 export const IMAGE_TYPES = ["站位", "瞄点", "效果", "其他"] as const;
+export const THROW_TYPES = ["左键", "右键", "左右键", "Jump Throw", "Run Throw", "Walk Throw"] as const;
 
 export type MapName = (typeof MAPS)[number];
 export type Side = (typeof SIDES)[number];
 export type GrenadeType = (typeof GRENADE_TYPES)[number];
 export type ImageType = (typeof IMAGE_TYPES)[number];
+export type ThrowType = (typeof THROW_TYPES)[number];
+
+export const GRENADE_TYPE_LABELS: Record<GrenadeType, string> = {
+  Smoke: "烟雾弹",
+  Flash: "闪光弹",
+  Molotov: "燃烧瓶",
+  HE: "高爆手雷",
+  Other: "其他",
+};
+
+export const THROW_TYPE_LABELS: Record<ThrowType, string> = {
+  左键: "左键投掷",
+  右键: "右键投掷",
+  左右键: "双键投掷",
+  "Jump Throw": "跳投",
+  "Run Throw": "跑投",
+  "Walk Throw": "走投",
+};
+
+export function grenadeTypeLabel(value: GrenadeType): string {
+  return GRENADE_TYPE_LABELS[value];
+}
+
+export function throwTypeLabel(value: string): string {
+  return THROW_TYPES.includes(value as ThrowType)
+    ? THROW_TYPE_LABELS[value as ThrowType]
+    : value;
+}
 
 export interface NoteImage {
   id: number;

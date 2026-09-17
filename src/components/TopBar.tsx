@@ -15,7 +15,7 @@ export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenBackup
         <span className="brand-mark"><BookIcon /></span>
         <div>
           <strong>CS 瞄点笔记本</strong>
-          <span>LINEUP NOTEBOOK</span>
+          <span>道具瞄点记录</span>
         </div>
       </div>
       <SearchBar value={searchQuery} onChange={onSearchChange} />

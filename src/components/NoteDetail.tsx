@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import type { Note, NoteImage } from "../types/note";
+import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteImage } from "../types/note";
 import { CrosshairIcon, ImageIcon, PencilIcon, TrashIcon } from "./icons";
 
 interface NoteDetailProps {
@@ -78,7 +78,7 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
     <main className="note-detail">
       <header className="detail-header">
         <div>
-          <span className="breadcrumb">{note.mapName} / {note.side} / {note.grenadeType}</span>
+          <span className="breadcrumb">{note.mapName} / {note.side} / {grenadeTypeLabel(note.grenadeType)}</span>
           <h1>{note.title}</h1>
           <span className="updated-at">更新于 {formatUpdatedAt(note.updatedAt)}</span>
         </div>
@@ -92,8 +92,8 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
         <section className="details-grid">
           <DetailField label="地图" value={note.mapName} />
           <DetailField label="阵营" value={note.side} />
-          <DetailField label="道具类型" value={note.grenadeType} />
-          <DetailField label="投掷方式" value={note.throwType} />
+          <DetailField label="道具类型" value={grenadeTypeLabel(note.grenadeType)} />
+          <DetailField label="投掷方式" value={throwTypeLabel(note.throwType)} />
           <DetailField label="起点" value={note.startPosition} />
           <DetailField label="落点" value={note.targetPosition} />
         </section>

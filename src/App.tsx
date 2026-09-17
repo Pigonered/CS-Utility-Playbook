@@ -10,7 +10,7 @@ import { TopBar } from "./components/TopBar";
 import { notesApi } from "./services/notes";
 import { screenshotApi } from "./services/screenshot";
 import type { BackupOperationResult } from "./services/backup";
-import type { Note, NoteFilters, NoteImage, NoteImageInput, NoteInput, Tag } from "./types/note";
+import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteFilters, type NoteImage, type NoteImageInput, type NoteInput, type Tag } from "./types/note";
 
 const initialFilters: NoteFilters = { mapName: null, side: null, grenadeType: null, tagName: null };
 
@@ -124,7 +124,17 @@ function App() {
           (tag) => tag.name.toLocaleLowerCase("zh-CN") === filters.tagName?.toLocaleLowerCase("zh-CN"),
         ));
       if (!matchesFilters || !query) return matchesFilters;
-      const searchable = [note.title, note.mapName, note.side, note.grenadeType, note.startPosition, note.targetPosition, note.description, ...note.tags.map((tag) => tag.name)];
+      const searchable = [
+        note.title,
+        note.mapName,
+        note.side,
+        grenadeTypeLabel(note.grenadeType),
+        throwTypeLabel(note.throwType),
+        note.startPosition,
+        note.targetPosition,
+        note.description,
+        ...note.tags.map((tag) => tag.name),
+      ];
       return searchable.some((value) => value.toLocaleLowerCase("zh-CN").includes(query));
     });
   }, [filters, notes, searchQuery]);
