@@ -5,6 +5,7 @@ export interface AppSettings {
   dataDirectory: string;
   screenshotShortcut: string | null;
   closeToTray: boolean;
+  openNoteAfterCapture: boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -28,6 +29,9 @@ export const settingsApi = {
   ),
   setCloseToTray: (enabled: boolean) => (
     call<AppSettings>("set_close_to_tray", { enabled })
+  ),
+  setOpenNoteAfterCapture: (enabled: boolean) => (
+    call<AppSettings>("set_open_note_after_capture", { enabled })
   ),
   chooseDataDirectory: async () => {
     const selected = await open({

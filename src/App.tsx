@@ -19,6 +19,8 @@ type EditorState =
   | { mode: "create"; note: null; temporaryImagePaths: string[] }
   | { mode: "edit"; note: Note; temporaryImagePaths: string[] };
 
+type SettingsView = "settings" | "about";
+
 interface ScreenshotCompletedPayload {
   path: string;
 }
@@ -42,10 +44,12 @@ function App() {
   const [isAnnotationSaving, setIsAnnotationSaving] = useState(false);
   const [annotationError, setAnnotationError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsView, setSettingsView] = useState<SettingsView>("settings");
   const [appSettings, setAppSettings] = useState<AppSettings>({
     dataDirectory: "",
     screenshotShortcut: "Alt+Q",
     closeToTray: true,
+    openNoteAfterCapture: true,
   });
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -302,11 +306,12 @@ function App() {
     }
   };
 
-  const openSettingsManager = () => {
+  const openSettingsManager = (view: SettingsView = "settings") => {
     if (editor || annotationImage) {
       showPhaseNotice("请先保存或关闭当前编辑器");
       return;
     }
+    setSettingsView(view);
     setIsSettingsOpen(true);
   };
 
@@ -325,7 +330,8 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCreateNote={openCreateEditor}
-        onOpenSettings={openSettingsManager}
+        onOpenAbout={() => openSettingsManager("about")}
+        onOpenSettings={() => openSettingsManager("settings")}
       />
       <div className="workspace">
         <Sidebar filters={filters} tags={availableTags} screenshotShortcut={appSettings.screenshotShortcut} onChange={setFilters} />
@@ -381,6 +387,7 @@ function App() {
       {isSettingsOpen && (
         <SettingsManager
           settings={appSettings}
+          initialView={settingsView}
           onSettingsChange={setAppSettings}
           onClose={() => setIsSettingsOpen(false)}
           onRestored={handleBackupRestored}

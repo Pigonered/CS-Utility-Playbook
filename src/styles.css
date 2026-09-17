@@ -38,6 +38,8 @@ textarea { font: inherit; }
 .top-bar { display: grid; grid-template-columns: minmax(260px, 580px) 1fr; align-items: center; gap: 26px; padding: 0 18px 0 20px; border-bottom: 1px solid var(--border); background: #15181d; }
 .top-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
 .top-actions .primary-button { justify-self: auto; }
+.about-button { color: #c9b083; background: #191d23; border-color: #3a352d; }
+.about-button:hover { color: #edc98f; background: rgba(223,155,66,.08); border-color: #765b38; }
 .settings-button { color: #aeb7c4; background: #191d23; }
 .settings-button svg { width: 17px; height: 17px; }
 

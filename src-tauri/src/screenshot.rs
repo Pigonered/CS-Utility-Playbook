@@ -8,6 +8,7 @@ use std::{
     time::Instant,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use uuid::Uuid;
 
 #[cfg(windows)]
@@ -21,6 +22,19 @@ use windows_sys::Win32::{
 };
 
 const OVERLAY_LABEL: &str = "screenshot-overlay";
+const CANCEL_SHORTCUTS: [&str; 4] = ["Escape", "Shift+Escape", "Alt+Escape", "Shift+Alt+Escape"];
+
+fn register_cancel_shortcuts(app: &AppHandle) {
+    for shortcut in CANCEL_SHORTCUTS {
+        let _ = app.global_shortcut().register(shortcut);
+    }
+}
+
+fn unregister_cancel_shortcuts(app: &AppHandle) {
+    for shortcut in CANCEL_SHORTCUTS {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,7 +60,8 @@ struct ScreenshotCompleted {
 
 #[derive(Debug, Default)]
 struct CaptureState {
-    busy: bool,
+    next_id: u64,
+    active_id: Option<u64>,
     session: Option<CaptureSession>,
 }
 
@@ -77,25 +92,31 @@ impl ScreenshotManager {
         })
     }
 
-    fn begin(&self) -> Result<(), String> {
+    fn begin(&self) -> Result<u64, String> {
         let mut state = self
             .state
             .lock()
             .map_err(|_| "截图状态不可用".to_string())?;
-        if state.busy {
+        if state.active_id.is_some() {
             return Err("截图已在进行中".to_string());
         }
-        state.busy = true;
-        Ok(())
+        state.next_id = state.next_id.wrapping_add(1);
+        let capture_id = state.next_id;
+        state.active_id = Some(capture_id);
+        state.session = None;
+        Ok(capture_id)
     }
 
-    fn set_session(&self, session: CaptureSession) -> Result<(), String> {
+    fn set_session(&self, capture_id: u64, session: CaptureSession) -> Result<bool, String> {
         let mut state = self
             .state
             .lock()
             .map_err(|_| "截图状态不可用".to_string())?;
+        if state.active_id != Some(capture_id) {
+            return Ok(false);
+        }
         state.session = Some(session);
-        Ok(())
+        Ok(true)
     }
 
     fn session(&self) -> Result<CaptureSession, String> {
@@ -112,16 +133,19 @@ impl ScreenshotManager {
             .state
             .lock()
             .map_err(|_| "截图状态不可用".to_string())?;
-        state.busy = false;
+        state.active_id = None;
         Ok(state.session.take())
     }
 
-    fn reset_after_error(&self) -> Option<CaptureSession> {
+    fn reset_after_error(&self, capture_id: u64) -> Result<(bool, Option<CaptureSession>), String> {
         let Ok(mut state) = self.state.lock() else {
-            return None;
+            return Err("截图状态不可用".to_string());
         };
-        state.busy = false;
-        state.session.take()
+        if state.active_id != Some(capture_id) {
+            return Ok((false, None));
+        }
+        state.active_id = None;
+        Ok((true, state.session.take()))
     }
 
     fn raw_path(&self) -> PathBuf {
@@ -145,21 +169,24 @@ impl ScreenshotManager {
 
 pub fn begin_capture(app: AppHandle) {
     let manager = app.state::<ScreenshotManager>();
-    if manager.begin().is_err() {
+    let Ok(capture_id) = manager.begin() else {
         return;
-    }
+    };
+    // Keep cancellation outside the WebView event loop so Esc also works when a
+    // fullscreen game interferes with focus or while the overlay is still loading.
+    register_cancel_shortcuts(&app);
 
     std::thread::spawn(move || {
         let started_at = Instant::now();
-        if let Err(error) = capture_primary_monitor(&app) {
-            fail_capture(&app, error);
+        if let Err(error) = capture_primary_monitor(&app, capture_id) {
+            fail_capture(&app, capture_id, error);
         } else {
             eprintln!("截图画面已就绪：{} ms", started_at.elapsed().as_millis());
         }
     });
 }
 
-fn capture_primary_monitor(app: &AppHandle) -> Result<(), String> {
+fn capture_primary_monitor(app: &AppHandle, capture_id: u64) -> Result<(), String> {
     let manager = app.state::<ScreenshotManager>();
     let image_path = manager.raw_path();
     let (width, height) = capture_primary_to_bmp(&image_path)?;
@@ -169,7 +196,10 @@ fn capture_primary_monitor(app: &AppHandle) -> Result<(), String> {
         width,
         height,
     };
-    manager.set_session(session.clone())?;
+    if !manager.set_session(capture_id, session.clone())? {
+        remove_file_if_present(&image_path);
+        return Ok(());
+    }
     app.emit_to(OVERLAY_LABEL, "capture-ready", session)
         .map_err(|error| format!("无法准备截图界面：{error}"))?;
     Ok(())
@@ -198,14 +228,21 @@ pub fn prepare_overlay(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn fail_capture(app: &AppHandle, message: String) {
+fn fail_capture(app: &AppHandle, capture_id: u64, message: String) {
     let manager = app.state::<ScreenshotManager>();
-    if let Some(session) = manager.reset_after_error() {
+    let Ok((was_active, session)) = manager.reset_after_error(capture_id) else {
+        return;
+    };
+    if !was_active {
+        return;
+    }
+    if let Some(session) = session {
         remove_file_if_present(Path::new(&session.image_path));
     }
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
+    unregister_cancel_shortcuts(app);
     let _ = app.emit_to("main", "screenshot-error", message);
 }
 
@@ -253,10 +290,17 @@ pub fn complete_capture(
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.show();
-        let _ = main_window.unminimize();
-        let _ = main_window.set_focus();
+    unregister_cancel_shortcuts(&app);
+    let open_note_after_capture = app
+        .try_state::<crate::settings::SettingsManager>()
+        .and_then(|settings| settings.open_note_after_capture().ok())
+        .unwrap_or(true);
+    if open_note_after_capture {
+        if let Some(main_window) = app.get_webview_window("main") {
+            let _ = main_window.show();
+            let _ = main_window.unminimize();
+            let _ = main_window.set_focus();
+        }
     }
 
     let path = result_path.to_string_lossy().into_owned();
@@ -271,12 +315,22 @@ pub fn complete_capture(
 
 #[tauri::command]
 pub fn cancel_capture(app: AppHandle, manager: State<'_, ScreenshotManager>) -> Result<(), String> {
+    cancel_capture_inner(&app, &manager)
+}
+
+pub fn cancel_active_capture(app: &AppHandle) {
+    let manager = app.state::<ScreenshotManager>();
+    let _ = cancel_capture_inner(app, &manager);
+}
+
+fn cancel_capture_inner(app: &AppHandle, manager: &ScreenshotManager) -> Result<(), String> {
     if let Some(session) = manager.finish()? {
         remove_file_if_present(Path::new(&session.image_path));
     }
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
+    unregister_cancel_shortcuts(app);
     Ok(())
 }
 

@@ -5,12 +5,13 @@ import { CloseIcon, DatabaseIcon, GithubIcon, InfoIcon, SettingsIcon } from "./i
 
 interface SettingsManagerProps {
   settings: AppSettings;
+  initialView?: SettingsView;
   onSettingsChange: (settings: AppSettings) => void;
   onClose: () => void;
   onRestored: (result: BackupOperationResult) => Promise<void>;
 }
 
-type BusyAction = "directory" | "shortcut" | "background" | "export" | "restore" | null;
+type BusyAction = "directory" | "shortcut" | "background" | "captureNavigation" | "export" | "restore" | null;
 type SettingsView = "settings" | "about";
 
 function formatDate(value: string | null): string {
@@ -73,8 +74,8 @@ function ShortcutKeys({ shortcut }: { shortcut: string | null }) {
   ))}</>;
 }
 
-export function SettingsManager({ settings, onSettingsChange, onClose, onRestored }: SettingsManagerProps) {
-  const [activeView, setActiveView] = useState<SettingsView>("settings");
+export function SettingsManager({ settings, initialView = "settings", onSettingsChange, onClose, onRestored }: SettingsManagerProps) {
+  const [activeView, setActiveView] = useState<SettingsView>(initialView);
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +186,22 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
     }
   };
 
+  const toggleOpenNoteAfterCapture = async () => {
+    if (busy) return;
+    setBusy("captureNavigation");
+    setError(null);
+    setMessage(null);
+    try {
+      const next = await settingsApi.setOpenNoteAfterCapture(!settings.openNoteAfterCapture);
+      onSettingsChange(next);
+      setMessage(next.openNoteAfterCapture ? "截图后将立即打开笔记界面" : "截图后将继续停留在当前窗口");
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : "无法修改截图跳转设置");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportBackup = async () => {
     setError(null);
     setMessage(null);
@@ -286,6 +303,23 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
               <small className="setting-help">默认开启。隐藏后可左键点击系统托盘图标重新打开，或从托盘菜单彻底退出。</small>
             </div>
             <div className="settings-card">
+              <div className="setting-row capture-navigation-setting-row">
+                <div><strong>截图后跳转到笔记界面</strong><p>完成区域截图后立即打开笔记编辑界面</p></div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.openNoteAfterCapture}
+                  className={settings.openNoteAfterCapture ? "settings-switch active" : "settings-switch"}
+                  onClick={() => void toggleOpenNoteAfterCapture()}
+                  disabled={Boolean(busy)}
+                >
+                  <span className="settings-switch-track"><i /></span>
+                  <strong>{settings.openNoteAfterCapture ? "已开启" : "已关闭"}</strong>
+                </button>
+              </div>
+              <small className="setting-help">默认开启。关闭后截图仍会追加到待编辑笔记，但不会打断游戏；稍后打开应用即可继续编辑。</small>
+            </div>
+            <div className="settings-card">
               <div className="setting-row storage-setting-row">
                 <div><strong>图片及笔记保存位置</strong><p title={settings.dataDirectory}>{settings.dataDirectory || "正在读取…"}</p></div>
                 <button type="button" className="secondary-button" onClick={() => void changeDirectory()} disabled={Boolean(busy)}>更改位置</button>
@@ -352,7 +386,7 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
               <div>
                 <span className="eyebrow">CS UTILITY PLAYBOOK</span>
                 <h3>关于 CS道具战术本</h3>
-                <p>当前版本 <strong>0.1.0 Beta</strong></p>
+                <p>当前版本 <strong>0.1.1 Beta</strong></p>
               </div>
             </section>
 
@@ -393,7 +427,7 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
         </div>
 
         <footer className="settings-footer">
-          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.0 Beta"}</span>
+          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.1 Beta"}</span>
           <button type="button" className="secondary-button" onClick={onClose} disabled={Boolean(busy) || isBinding}>完成</button>
         </footer>
       </section>

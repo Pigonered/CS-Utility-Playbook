@@ -10,7 +10,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, ShortcutState};
 
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -105,9 +105,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        screenshot::begin_capture(app.clone());
+                        if shortcut.key == Code::Escape {
+                            screenshot::cancel_active_capture(app);
+                        } else {
+                            screenshot::begin_capture(app.clone());
+                        }
                     }
                 })
                 .build(),
@@ -172,7 +176,8 @@ pub fn run() {
             }
 
             if let Some(shortcut) = screenshot_shortcut {
-                if let Err(error) = app.global_shortcut().register(shortcut.as_str()) {
+                if let Err(error) = settings::register_screenshot_shortcut(app.handle(), &shortcut)
+                {
                     eprintln!("无法注册全局截图快捷键 {shortcut}：{error}");
                 }
             }
@@ -199,6 +204,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_screenshot_shortcut,
             settings::set_close_to_tray,
+            settings::set_open_note_after_capture,
             settings::change_data_directory,
         ])
         .run(tauri::generate_context!())

@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{AppHandle, State};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut};
 
 type SettingsResult<T> = Result<T, String>;
 
@@ -16,6 +16,7 @@ struct PersistedSettings {
     data_directory: Option<String>,
     screenshot_shortcut: Option<String>,
     close_to_tray: bool,
+    open_note_after_capture: bool,
 }
 
 impl Default for PersistedSettings {
@@ -24,6 +25,7 @@ impl Default for PersistedSettings {
             data_directory: None,
             screenshot_shortcut: Some("Alt+Q".to_string()),
             close_to_tray: true,
+            open_note_after_capture: true,
         }
     }
 }
@@ -34,6 +36,7 @@ pub struct SettingsSnapshot {
     data_directory: String,
     screenshot_shortcut: Option<String>,
     close_to_tray: bool,
+    open_note_after_capture: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -85,11 +88,19 @@ impl SettingsManager {
             .map(|settings| settings.close_to_tray)
     }
 
+    pub fn open_note_after_capture(&self) -> SettingsResult<bool> {
+        self.settings
+            .lock()
+            .map_err(|_| "设置状态不可用".to_string())
+            .map(|settings| settings.open_note_after_capture)
+    }
+
     pub fn snapshot(&self) -> SettingsResult<SettingsSnapshot> {
         Ok(SettingsSnapshot {
             data_directory: self.data_directory()?.to_string_lossy().into_owned(),
             screenshot_shortcut: self.screenshot_shortcut()?,
             close_to_tray: self.close_to_tray()?,
+            open_note_after_capture: self.open_note_after_capture()?,
         })
     }
 
@@ -137,6 +148,52 @@ impl SettingsManager {
         *guard = next;
         Ok(())
     }
+
+    fn update_open_note_after_capture(&self, enabled: bool) -> SettingsResult<()> {
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| "设置状态不可用".to_string())?;
+        let mut next = guard.clone();
+        next.open_note_after_capture = enabled;
+        self.save(&next)?;
+        *guard = next;
+        Ok(())
+    }
+}
+
+fn shortcut_variants(shortcut: &str) -> SettingsResult<Vec<Shortcut>> {
+    let base = shortcut
+        .parse::<Shortcut>()
+        .map_err(|error| format!("快捷键格式无效：{error}"))?;
+    let mut variants = vec![base];
+    if !base.mods.contains(Modifiers::SHIFT) {
+        variants.push(Shortcut::new(Some(base.mods | Modifiers::SHIFT), base.key));
+    }
+    Ok(variants)
+}
+
+pub fn register_screenshot_shortcut(app: &AppHandle, shortcut: &str) -> SettingsResult<()> {
+    let variants = shortcut_variants(shortcut)?;
+    let mut registered = Vec::new();
+    for variant in variants {
+        if let Err(error) = app.global_shortcut().register(variant) {
+            for registered_variant in registered {
+                let _ = app.global_shortcut().unregister(registered_variant);
+            }
+            return Err(format!("快捷键不可用或已被占用：{error}"));
+        }
+        registered.push(variant);
+    }
+    Ok(())
+}
+
+pub fn unregister_screenshot_shortcut(app: &AppHandle, shortcut: &str) {
+    if let Ok(variants) = shortcut_variants(shortcut) {
+        for variant in variants {
+            let _ = app.global_shortcut().unregister(variant);
+        }
+    }
 }
 
 #[tauri::command]
@@ -159,23 +216,23 @@ pub fn set_screenshot_shortcut(
     }
 
     if let Some(value) = &previous {
-        let _ = app.global_shortcut().unregister(value.as_str());
+        unregister_screenshot_shortcut(&app, value);
     }
     if let Some(value) = &shortcut {
-        if let Err(error) = app.global_shortcut().register(value.as_str()) {
+        if let Err(error) = register_screenshot_shortcut(&app, value) {
             if let Some(previous) = &previous {
-                let _ = app.global_shortcut().register(previous.as_str());
+                let _ = register_screenshot_shortcut(&app, previous);
             }
-            return Err(format!("快捷键不可用或已被占用：{error}"));
+            return Err(error);
         }
     }
 
     if let Err(error) = settings.update_shortcut(shortcut.clone()) {
         if let Some(value) = &shortcut {
-            let _ = app.global_shortcut().unregister(value.as_str());
+            unregister_screenshot_shortcut(&app, value);
         }
         if let Some(previous) = &previous {
-            let _ = app.global_shortcut().register(previous.as_str());
+            let _ = register_screenshot_shortcut(&app, previous);
         }
         return Err(error);
     }
@@ -188,6 +245,15 @@ pub fn set_close_to_tray(
     settings: State<'_, SettingsManager>,
 ) -> SettingsResult<SettingsSnapshot> {
     settings.update_close_to_tray(enabled)?;
+    settings.snapshot()
+}
+
+#[tauri::command]
+pub fn set_open_note_after_capture(
+    enabled: bool,
+    settings: State<'_, SettingsManager>,
+) -> SettingsResult<SettingsSnapshot> {
+    settings.update_open_note_after_capture(enabled)?;
     settings.snapshot()
 }
 
@@ -224,6 +290,30 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn screenshot_shortcut_accepts_shift_while_held() {
+        let variants = shortcut_variants("Alt+Q").expect("shortcut should parse");
+        assert_eq!(variants.len(), 2);
+        assert!(variants
+            .iter()
+            .any(|shortcut| shortcut.mods == Modifiers::ALT));
+        assert!(variants
+            .iter()
+            .any(|shortcut| shortcut.mods == (Modifiers::ALT | Modifiers::SHIFT)));
+
+        let shifted = shortcut_variants("Alt+Shift+Q").expect("shifted shortcut should parse");
+        assert_eq!(shifted.len(), 1);
+    }
+
+    #[test]
+    fn legacy_settings_enable_capture_navigation_by_default() {
+        let settings: PersistedSettings = serde_json::from_str(
+            r#"{"dataDirectory":null,"screenshotShortcut":"Alt+Q","closeToTray":true}"#,
+        )
+        .expect("legacy settings should load");
+        assert!(settings.open_note_after_capture);
+    }
+
+    #[test]
     fn settings_are_persisted_outside_the_selected_data_directory() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -245,9 +335,15 @@ mod tests {
         assert!(manager
             .close_to_tray()
             .expect("close behavior should use its enabled default"));
+        assert!(manager
+            .open_note_after_capture()
+            .expect("capture navigation should use its enabled default"));
         manager
             .update_close_to_tray(false)
             .expect("close behavior should save");
+        manager
+            .update_open_note_after_capture(false)
+            .expect("capture navigation should save");
 
         let reloaded = SettingsManager::new(config_path, root.join("unused-default"))
             .expect("settings should reload");
@@ -262,6 +358,9 @@ mod tests {
         assert!(!reloaded
             .close_to_tray()
             .expect("close behavior should load"));
+        assert!(!reloaded
+            .open_note_after_capture()
+            .expect("capture navigation should load"));
 
         fs::remove_dir_all(root).expect("test directory should be removed");
     }
