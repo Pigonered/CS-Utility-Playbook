@@ -5,8 +5,52 @@ mod screenshot;
 mod settings;
 
 use database::Database;
-use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show_item = MenuItem::with_id(app, "show-main", "打开主窗口", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit-app", "退出应用", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+    let mut tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("CS道具战术本")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show-main" => show_main_window(app),
+            "quit-app" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
 
 #[cfg(windows)]
 fn apply_windows_frame_colors(window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -55,6 +99,9 @@ fn apply_windows_frame_colors(window: &tauri::WebviewWindow) -> Result<(), Strin
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -66,10 +113,20 @@ pub fn run() {
                 .build(),
         )
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
-            {
-                window.app_handle().exit(0);
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let close_to_tray = window
+                        .app_handle()
+                        .try_state::<settings::SettingsManager>()
+                        .and_then(|settings| settings.close_to_tray().ok())
+                        .unwrap_or(true);
+                    if close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    } else {
+                        window.app_handle().exit(0);
+                    }
+                }
             }
         })
         .setup(|app| {
@@ -85,6 +142,7 @@ pub fn run() {
                 .screenshot_shortcut()
                 .map_err(std::io::Error::other)?;
             app.manage(settings_manager);
+            setup_tray(app)?;
             app.asset_protocol_scope()
                 .allow_directory(app_data_directory.join("images"), true)?;
             app.asset_protocol_scope()
@@ -140,8 +198,9 @@ pub fn run() {
             screenshot::discard_temp_images,
             settings::get_settings,
             settings::set_screenshot_shortcut,
+            settings::set_close_to_tray,
             settings::change_data_directory,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running CS Lineup Notebook");
+        .expect("error while running CS道具战术本");
 }

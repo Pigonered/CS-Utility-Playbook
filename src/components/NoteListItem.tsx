@@ -15,7 +15,6 @@ export function NoteListItem({ note, selected, onSelect }: NoteListItemProps) {
       onClick={onSelect}
       aria-current={selected}
     >
-      <span className={`type-indicator ${note.grenadeType.toLowerCase()}`} />
       <span className="note-item-content">
         <strong>{note.title}</strong>
         <span className="note-meta-row">

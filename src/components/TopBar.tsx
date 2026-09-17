@@ -1,4 +1,4 @@
-import { BookIcon, PlusIcon, SettingsIcon } from "./icons";
+import { PlusIcon, SettingsIcon } from "./icons";
 import { SearchBar } from "./SearchBar";
 
 interface TopBarProps {
@@ -11,13 +11,6 @@ interface TopBarProps {
 export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenSettings }: TopBarProps) {
   return (
     <header className="top-bar">
-      <div className="brand">
-        <span className="brand-mark"><BookIcon /></span>
-        <div>
-          <strong>CS 瞄点笔记本</strong>
-          <span>道具瞄点记录</span>
-        </div>
-      </div>
       <SearchBar value={searchQuery} onChange={onSearchChange} />
       <div className="top-actions">
         <button className="primary-button" type="button" onClick={onCreateNote}>

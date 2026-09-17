@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 export interface AppSettings {
   dataDirectory: string;
   screenshotShortcut: string | null;
+  closeToTray: boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -24,6 +25,9 @@ export const settingsApi = {
   get: () => call<AppSettings>("get_settings"),
   setScreenshotShortcut: (shortcut: string | null) => (
     call<AppSettings>("set_screenshot_shortcut", { shortcut })
+  ),
+  setCloseToTray: (enabled: boolean) => (
+    call<AppSettings>("set_close_to_tray", { enabled })
   ),
   chooseDataDirectory: async () => {
     const selected = await open({

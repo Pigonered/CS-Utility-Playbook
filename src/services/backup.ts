@@ -36,15 +36,15 @@ function backupFileName(): string {
 export const backupApi = {
   getStatus: () => invokeBackup<BackupStatus>("get_backup_status"),
   chooseExportPath: () => save({
-    title: "导出 CS 瞄点笔记本备份",
+    title: "导出 CS道具战术本备份",
     defaultPath: backupFileName(),
-    filters: [{ name: "CS 瞄点笔记本备份", extensions: ["zip"] }],
+    filters: [{ name: "CS道具战术本备份", extensions: ["zip"] }],
   }),
   chooseImportPath: () => open({
-    title: "选择 CS 瞄点笔记本备份",
+    title: "选择 CS道具战术本备份",
     multiple: false,
     directory: false,
-    filters: [{ name: "CS 瞄点笔记本备份", extensions: ["zip"] }],
+    filters: [{ name: "CS道具战术本备份", extensions: ["zip"] }],
   }),
   exportBackup: (destination: string) => invokeBackup<BackupOperationResult>("export_backup", { destination }),
   restoreBackup: (source: string) => invokeBackup<BackupOperationResult>("restore_backup", { source }),

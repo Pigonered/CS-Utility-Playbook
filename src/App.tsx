@@ -45,6 +45,7 @@ function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>({
     dataDirectory: "",
     screenshotShortcut: "Alt+Q",
+    closeToTray: true,
   });
   const [notice, setNotice] = useState<string | null>(null);
 

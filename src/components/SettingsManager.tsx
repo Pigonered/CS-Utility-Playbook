@@ -10,7 +10,7 @@ interface SettingsManagerProps {
   onRestored: (result: BackupOperationResult) => Promise<void>;
 }
 
-type BusyAction = "directory" | "shortcut" | "export" | "restore" | null;
+type BusyAction = "directory" | "shortcut" | "background" | "export" | "restore" | null;
 
 function formatDate(value: string | null): string {
   if (!value) return "尚未创建";
@@ -167,6 +167,22 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
     }
   };
 
+  const toggleCloseToTray = async () => {
+    if (busy) return;
+    setBusy("background");
+    setError(null);
+    setMessage(null);
+    try {
+      const next = await settingsApi.setCloseToTray(!settings.closeToTray);
+      onSettingsChange(next);
+      setMessage(next.closeToTray ? "关闭主窗口时将在后台继续运行" : "关闭主窗口时将直接退出应用");
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : "无法修改后台运行设置");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportBackup = async () => {
     setError(null);
     setMessage(null);
@@ -229,7 +245,24 @@ export function SettingsManager({ settings, onSettingsChange, onClose, onRestore
 
         <div className="settings-content">
           <section className="settings-section">
-            <div className="settings-section-heading"><SettingsIcon /><div><strong>常规设置</strong><small>存储与快捷键</small></div></div>
+            <div className="settings-section-heading"><SettingsIcon /><div><strong>常规设置</strong><small>后台运行、存储与快捷键</small></div></div>
+            <div className="settings-card">
+              <div className="setting-row background-setting-row">
+                <div><strong>关闭时放到后台</strong><p>关闭主窗口后继续运行，截图快捷键仍然可用</p></div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.closeToTray}
+                  className={settings.closeToTray ? "settings-switch active" : "settings-switch"}
+                  onClick={() => void toggleCloseToTray()}
+                  disabled={Boolean(busy)}
+                >
+                  <span className="settings-switch-track"><i /></span>
+                  <strong>{settings.closeToTray ? "已开启" : "已关闭"}</strong>
+                </button>
+              </div>
+              <small className="setting-help">默认开启。隐藏后可左键点击系统托盘图标重新打开，或从托盘菜单彻底退出。</small>
+            </div>
             <div className="settings-card">
               <div className="setting-row storage-setting-row">
                 <div><strong>图片及笔记保存位置</strong><p title={settings.dataDirectory}>{settings.dataDirectory || "正在读取…"}</p></div>

@@ -11,10 +11,11 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 type SettingsResult<T> = Result<T, String>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 struct PersistedSettings {
     data_directory: Option<String>,
     screenshot_shortcut: Option<String>,
+    close_to_tray: bool,
 }
 
 impl Default for PersistedSettings {
@@ -22,6 +23,7 @@ impl Default for PersistedSettings {
         Self {
             data_directory: None,
             screenshot_shortcut: Some("Alt+Q".to_string()),
+            close_to_tray: true,
         }
     }
 }
@@ -31,6 +33,7 @@ impl Default for PersistedSettings {
 pub struct SettingsSnapshot {
     data_directory: String,
     screenshot_shortcut: Option<String>,
+    close_to_tray: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -75,10 +78,18 @@ impl SettingsManager {
             .map(|settings| settings.screenshot_shortcut.clone())
     }
 
+    pub fn close_to_tray(&self) -> SettingsResult<bool> {
+        self.settings
+            .lock()
+            .map_err(|_| "设置状态不可用".to_string())
+            .map(|settings| settings.close_to_tray)
+    }
+
     pub fn snapshot(&self) -> SettingsResult<SettingsSnapshot> {
         Ok(SettingsSnapshot {
             data_directory: self.data_directory()?.to_string_lossy().into_owned(),
             screenshot_shortcut: self.screenshot_shortcut()?,
+            close_to_tray: self.close_to_tray()?,
         })
     }
 
@@ -110,6 +121,18 @@ impl SettingsManager {
             .map_err(|_| "设置状态不可用".to_string())?;
         let mut next = guard.clone();
         next.data_directory = Some(directory.to_string_lossy().into_owned());
+        self.save(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
+    fn update_close_to_tray(&self, enabled: bool) -> SettingsResult<()> {
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| "设置状态不可用".to_string())?;
+        let mut next = guard.clone();
+        next.close_to_tray = enabled;
         self.save(&next)?;
         *guard = next;
         Ok(())
@@ -156,6 +179,15 @@ pub fn set_screenshot_shortcut(
         }
         return Err(error);
     }
+    settings.snapshot()
+}
+
+#[tauri::command]
+pub fn set_close_to_tray(
+    enabled: bool,
+    settings: State<'_, SettingsManager>,
+) -> SettingsResult<SettingsSnapshot> {
+    settings.update_close_to_tray(enabled)?;
     settings.snapshot()
 }
 
@@ -210,6 +242,12 @@ mod tests {
             .update_data_directory(&custom_data)
             .expect("data directory should save");
         manager.update_shortcut(None).expect("shortcut should save");
+        assert!(manager
+            .close_to_tray()
+            .expect("close behavior should use its enabled default"));
+        manager
+            .update_close_to_tray(false)
+            .expect("close behavior should save");
 
         let reloaded = SettingsManager::new(config_path, root.join("unused-default"))
             .expect("settings should reload");
@@ -221,6 +259,9 @@ mod tests {
             .screenshot_shortcut()
             .expect("shortcut should load")
             .is_none());
+        assert!(!reloaded
+            .close_to_tray()
+            .expect("close behavior should load"));
 
         fs::remove_dir_all(root).expect("test directory should be removed");
     }

@@ -8,12 +8,66 @@ src-tauri/target/
 # Local environment and runtime data
 .env
 .env.*
-!.env.example
+*.local
 *.db
 *.db-*
 *.sqlite
 *.sqlite3
 *.log
+
+# Credentials, tokens, and private keys
+.npmrc
+.yarnrc
+.pypirc
+.netrc
+credentials.json
+credentials.toml
+auth.json
+secrets.json
+secrets.toml
+api-key.*
+api-keys.*
+api_key.*
+api_keys.*
+apikey.*
+apikeys.*
+passwords.*
+*.credentials
+*.secret
+*.secrets
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.cargo/credentials
+.cargo/credentials.toml
+.aws/
+.azure/
+.config/gcloud/
+
+# Local user content, backups, and application caches
+/notebook.db*
+/settings.json
+/images/
+/backups/
+/temp/
+/cache/
+/screenshots/
+/uploads/
+/CSNotebookBackup-*.zip
+.cache/
+.vite/
+.turbo/
+.parcel-cache/
+.nyc_output/
+coverage/
+*.tsbuildinfo
+.eslintcache
 
 # Editor and OS metadata
 .idea/
@@ -25,5 +79,6 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.bak
+*.backup
 *.swp
 *~
