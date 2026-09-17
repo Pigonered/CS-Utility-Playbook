@@ -4,6 +4,7 @@ import { CrosshairIcon, GrenadeIcon, MapIcon, ShieldIcon } from "./icons";
 interface SidebarProps {
   filters: NoteFilters;
   tags: Tag[];
+  screenshotShortcut: string | null;
   onChange: (filters: NoteFilters) => void;
 }
 
@@ -47,7 +48,7 @@ const grenadeClass: Record<GrenadeType, string> = {
   Other: "other",
 };
 
-export function Sidebar({ filters, tags, onChange }: SidebarProps) {
+export function Sidebar({ filters, tags, screenshotShortcut, onChange }: SidebarProps) {
   const hasFilters = Object.values(filters).some(Boolean);
 
   return (
@@ -90,8 +91,12 @@ export function Sidebar({ filters, tags, onChange }: SidebarProps) {
         />
       )}
       <div className="sidebar-footer">
-        <span className="shortcut-key">Alt</span><span>+</span><span className="shortcut-key">Q</span>
-        <small>全局快速截图</small>
+        {screenshotShortcut ? screenshotShortcut.split("+").map((key, index) => (
+          <span className="shortcut-key-group" key={`${key}-${index}`}>
+            {index > 0 && <i>+</i>}<span className="shortcut-key">{key}</span>
+          </span>
+        )) : <span className="shortcut-unbound">未绑定</span>}
+        <small>{screenshotShortcut ? "全局快速截图" : "截图快捷键"}</small>
       </div>
     </aside>
   );

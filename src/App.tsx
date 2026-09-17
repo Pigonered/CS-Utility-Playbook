@@ -1,15 +1,16 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnnotationEditor } from "./components/AnnotationEditor";
-import { BackupManager } from "./components/BackupManager";
 import { NoteDetail } from "./components/NoteDetail";
 import { NoteEditor } from "./components/NoteEditor";
 import { NoteList } from "./components/NoteList";
+import { SettingsManager } from "./components/SettingsManager";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { notesApi } from "./services/notes";
 import { screenshotApi } from "./services/screenshot";
 import type { BackupOperationResult } from "./services/backup";
+import { settingsApi, type AppSettings } from "./services/settings";
 import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteFilters, type NoteImage, type NoteImageInput, type NoteInput, type Tag } from "./types/note";
 
 const initialFilters: NoteFilters = { mapName: null, side: null, grenadeType: null, tagName: null };
@@ -40,7 +41,11 @@ function App() {
   const [annotationImage, setAnnotationImage] = useState<NoteImage | null>(null);
   const [isAnnotationSaving, setIsAnnotationSaving] = useState(false);
   const [annotationError, setAnnotationError] = useState<string | null>(null);
-  const [isBackupOpen, setIsBackupOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    dataDirectory: "",
+    screenshotShortcut: "Alt+Q",
+  });
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadNotes = useCallback(async (preferredId?: number) => {
@@ -73,6 +78,15 @@ function App() {
   useEffect(() => {
     void loadNotes();
   }, [loadNotes]);
+
+  useEffect(() => {
+    void settingsApi.get()
+      .then(setAppSettings)
+      .catch((error: unknown) => {
+        setNotice(error instanceof Error ? error.message : "无法读取应用设置");
+        window.setTimeout(() => setNotice(null), 3200);
+      });
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -287,12 +301,12 @@ function App() {
     }
   };
 
-  const openBackupManager = () => {
+  const openSettingsManager = () => {
     if (editor || annotationImage) {
       showPhaseNotice("请先保存或关闭当前编辑器");
       return;
     }
-    setIsBackupOpen(true);
+    setIsSettingsOpen(true);
   };
 
   const handleBackupRestored = async (_result: BackupOperationResult) => {
@@ -310,10 +324,10 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCreateNote={openCreateEditor}
-        onOpenBackup={openBackupManager}
+        onOpenSettings={openSettingsManager}
       />
       <div className="workspace">
-        <Sidebar filters={filters} tags={availableTags} onChange={setFilters} />
+        <Sidebar filters={filters} tags={availableTags} screenshotShortcut={appSettings.screenshotShortcut} onChange={setFilters} />
         <NoteList
           notes={filteredNotes}
           selectedId={selectedId}
@@ -341,6 +355,7 @@ function App() {
           note={editor.note}
           capturedImagePaths={editor.temporaryImagePaths}
           availableTags={availableTags}
+          screenshotShortcut={appSettings.screenshotShortcut}
           isSaving={isSaving}
           error={editorError}
           onSave={(input, imageItems) => void handleSave(input, imageItems)}
@@ -362,9 +377,11 @@ function App() {
           }}
         />
       )}
-      {isBackupOpen && (
-        <BackupManager
-          onClose={() => setIsBackupOpen(false)}
+      {isSettingsOpen && (
+        <SettingsManager
+          settings={appSettings}
+          onSettingsChange={setAppSettings}
+          onClose={() => setIsSettingsOpen(false)}
           onRestored={handleBackupRestored}
         />
       )}

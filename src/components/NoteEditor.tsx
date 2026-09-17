@@ -45,6 +45,7 @@ interface NoteEditorProps {
   note: Note | null;
   capturedImagePaths?: string[];
   availableTags: Tag[];
+  screenshotShortcut: string | null;
   isSaving: boolean;
   error: string | null;
   onSave: (input: NoteInput, imageItems: NoteImageInput[]) => void;
@@ -140,7 +141,7 @@ const fieldLabels: Record<RequiredField, string> = {
   grenadeType: "道具类型",
 };
 
-export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags, isSaving, error, onSave, onClose }: NoteEditorProps) {
+export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
   const [form, setForm] = useState<FormState>(() => createInitialState(note));
   const [images, setImages] = useState<EditorImage[]>(() => createInitialImages(note, capturedImagePaths));
   const [tags, setTags] = useState<string[]>(() => note?.tags.map((tag) => tag.name) ?? []);
@@ -561,8 +562,12 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
             <section className="form-section image-form-section">
               <div className="form-section-title"><span>05</span><strong>图片</strong><small>{images.length} 张</small></div>
               <div className="continuous-capture-tip">
-                <span className="shortcut-key">Alt</span><span>+</span><span className="shortcut-key">Q</span>
-                <p>编辑期间可连续截图，新图片会自动追加到当前笔记</p>
+                {screenshotShortcut ? screenshotShortcut.split("+").map((key, index) => (
+                  <span className="shortcut-key-group" key={`${key}-${index}`}>
+                    {index > 0 && <i>+</i>}<span className="shortcut-key">{key}</span>
+                  </span>
+                )) : <span className="shortcut-unbound">未绑定</span>}
+                <p>{screenshotShortcut ? "编辑期间可连续截图，新图片会自动追加到当前笔记" : "可在设置中绑定截图快捷键"}</p>
               </div>
               <button
                 type="button"

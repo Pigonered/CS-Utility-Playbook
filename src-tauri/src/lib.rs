@@ -2,6 +2,7 @@ mod backup;
 mod database;
 mod image_store;
 mod screenshot;
+mod settings;
 
 use database::Database;
 use tauri::Manager;
@@ -72,7 +73,22 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let app_data_directory = app.path().app_data_dir()?;
+            let default_data_directory = app.path().app_data_dir()?;
+            let settings_path = app.path().app_config_dir()?.join("settings.json");
+            let settings_manager =
+                settings::SettingsManager::new(settings_path, default_data_directory)
+                    .map_err(std::io::Error::other)?;
+            let app_data_directory = settings_manager
+                .data_directory()
+                .map_err(std::io::Error::other)?;
+            let screenshot_shortcut = settings_manager
+                .screenshot_shortcut()
+                .map_err(std::io::Error::other)?;
+            app.manage(settings_manager);
+            app.asset_protocol_scope()
+                .allow_directory(app_data_directory.join("images"), true)?;
+            app.asset_protocol_scope()
+                .allow_directory(app_data_directory.join("temp"), true)?;
             let database = Database::new(app_data_directory.join("notebook.db"));
             database.initialize().map_err(std::io::Error::other)?;
             app.manage(database);
@@ -97,8 +113,10 @@ pub fn run() {
                 main_window.set_focus()?;
             }
 
-            if let Err(error) = app.global_shortcut().register("Alt+Q") {
-                eprintln!("无法注册全局快捷键 Alt+Q：{error}");
+            if let Some(shortcut) = screenshot_shortcut {
+                if let Err(error) = app.global_shortcut().register(shortcut.as_str()) {
+                    eprintln!("无法注册全局截图快捷键 {shortcut}：{error}");
+                }
             }
             Ok(())
         })
@@ -120,6 +138,9 @@ pub fn run() {
             screenshot::complete_capture,
             screenshot::cancel_capture,
             screenshot::discard_temp_images,
+            settings::get_settings,
+            settings::set_screenshot_shortcut,
+            settings::change_data_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CS Lineup Notebook");

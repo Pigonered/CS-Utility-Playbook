@@ -77,6 +77,48 @@ impl BackupService {
         Self { app_data_directory }
     }
 
+    pub fn migrate_to_directory(&self, destination: &Path) -> BackupResultValue<()> {
+        fs::create_dir_all(destination)
+            .map_err(|error| format!("无法创建新的数据目录：{error}"))?;
+        let source = fs::canonicalize(&self.app_data_directory)
+            .map_err(|error| format!("无法读取当前数据目录：{error}"))?;
+        let destination = fs::canonicalize(destination)
+            .map_err(|error| format!("无法读取新的数据目录：{error}"))?;
+
+        if source == destination {
+            return Ok(());
+        }
+        if destination.starts_with(&source) || source.starts_with(&destination) {
+            return Err("新的数据目录不能与当前数据目录互相嵌套".to_string());
+        }
+        if destination.join("notebook.db").exists() || destination.join("images").exists() {
+            return Err(
+                "所选目录已包含笔记本数据，请选择不含 notebook.db 和 images 的目录".to_string(),
+            );
+        }
+
+        let staging = destination.join(format!(".cs-notes-migration-{}", Uuid::new_v4()));
+        fs::create_dir(&staging).map_err(|error| format!("无法创建迁移临时目录：{error}"))?;
+        let result = (|| -> BackupResultValue<()> {
+            let staged_database = staging.join("notebook.db");
+            create_database_snapshot(&self.database_path(), &staged_database)?;
+            let staged_images = staging.join("images");
+            copy_directory(&self.images_directory(), &staged_images)?;
+            validate_database_and_images(&staged_database, &staging)?;
+
+            let installed_images = destination.join("images");
+            fs::rename(&staged_images, &installed_images)
+                .map_err(|error| format!("无法安装迁移后的图片目录：{error}"))?;
+            if let Err(error) = fs::rename(&staged_database, destination.join("notebook.db")) {
+                let _ = fs::remove_dir_all(&installed_images);
+                return Err(format!("无法安装迁移后的数据库：{error}"));
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&staging);
+        result
+    }
+
     fn database_path(&self) -> PathBuf {
         self.app_data_directory.join("notebook.db")
     }
@@ -311,6 +353,29 @@ impl BackupService {
         }
         Ok(())
     }
+}
+
+fn copy_directory(source: &Path, destination: &Path) -> BackupResultValue<()> {
+    fs::create_dir_all(destination).map_err(|error| format!("无法创建图片迁移目录：{error}"))?;
+    if !source.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(source).map_err(|error| format!("无法读取图片目录：{error}"))?
+    {
+        let entry = entry.map_err(|error| format!("无法读取图片目录项：{error}"))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("无法读取图片目录项类型：{error}"))?;
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_directory(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), target).map_err(|error| format!("无法迁移图片：{error}"))?;
+        } else {
+            return Err("图片目录中包含不支持的链接或特殊文件".to_string());
+        }
+    }
+    Ok(())
 }
 
 fn create_database_snapshot(source: &Path, destination: &Path) -> BackupResultValue<()> {
@@ -692,5 +757,47 @@ mod tests {
         assert!(error.contains("不安全路径"));
 
         fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn data_directory_migration_copies_notes_and_images() {
+        let root = test_directory();
+        let source_directory = root.join("source-data");
+        let destination_directory = root.join("destination-data");
+        fs::create_dir_all(&source_directory).expect("source directory should be created");
+        let database = Database::new(source_directory.join("notebook.db"));
+        database.initialize().expect("database should initialize");
+        let source_image = root.join("migration-source.png");
+        image::DynamicImage::new_rgba8(4, 4)
+            .save(&source_image)
+            .expect("source image should save");
+        database
+            .save_note_with_images(
+                None,
+                sample_input(),
+                vec![NoteImageInput {
+                    existing_id: None,
+                    source_path: Some(source_image.to_string_lossy().into_owned()),
+                    image_type: "站位".to_string(),
+                }],
+            )
+            .expect("note should save");
+
+        BackupService::new(source_directory.clone())
+            .migrate_to_directory(&destination_directory)
+            .expect("data should migrate");
+
+        let migrated_database = Database::new(destination_directory.join("notebook.db"));
+        migrated_database
+            .initialize()
+            .expect("migrated database should initialize");
+        let notes = migrated_database
+            .get_notes()
+            .expect("migrated notes should load");
+        assert_eq!(notes.len(), 1);
+        assert!(Path::new(&notes[0].images[0].image_path).is_file());
+        assert!(source_directory.join("notebook.db").is_file());
+
+        fs::remove_dir_all(root).expect("test directory should be removed");
     }
 }

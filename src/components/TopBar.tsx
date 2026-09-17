@@ -1,14 +1,14 @@
-import { BookIcon, DatabaseIcon, PlusIcon } from "./icons";
+import { BookIcon, PlusIcon, SettingsIcon } from "./icons";
 import { SearchBar } from "./SearchBar";
 
 interface TopBarProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onCreateNote: () => void;
-  onOpenBackup: () => void;
+  onOpenSettings: () => void;
 }
 
-export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenBackup }: TopBarProps) {
+export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenSettings }: TopBarProps) {
   return (
     <header className="top-bar">
       <div className="brand">
@@ -20,13 +20,12 @@ export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenBackup
       </div>
       <SearchBar value={searchQuery} onChange={onSearchChange} />
       <div className="top-actions">
-        <button className="secondary-button data-safety-button" type="button" onClick={onOpenBackup}>
-          <DatabaseIcon />
-          数据安全
-        </button>
         <button className="primary-button" type="button" onClick={onCreateNote}>
           <PlusIcon />
           新建笔记
+        </button>
+        <button className="icon-button settings-button" type="button" onClick={onOpenSettings} aria-label="打开设置" title="设置">
+          <SettingsIcon />
         </button>
       </div>
     </header>
