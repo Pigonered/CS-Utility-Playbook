@@ -22,6 +22,10 @@ export function PlusIcon(props: IconProps) {
   return <svg {...baseProps} {...props}><path d="M12 5v14M5 12h14" /></svg>;
 }
 
+export function CloseIcon(props: IconProps) {
+  return <svg {...baseProps} {...props}><path d="M6 6l12 12M18 6 6 18" /></svg>;
+}
+
 export function BookIcon(props: IconProps) {
   return <svg {...baseProps} {...props}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z" /></svg>;
 }

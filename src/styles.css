@@ -162,7 +162,8 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .empty-detail > svg { width: 42px; height: 42px; color: #383f49; }.empty-detail h2 { margin: 16px 0 4px; color: var(--muted); font-size: 16px; }.empty-detail p { max-width: 320px; font-size: 11px; line-height: 1.6; }
 .image-viewer { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 48px; background: rgba(4,5,7,.94); cursor: zoom-out; }
 .image-viewer > img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 20px 70px rgba(0,0,0,.55); cursor: default; }
-.image-viewer > button { position: absolute; top: 18px; right: 21px; width: 38px; height: 38px; display: grid; place-items: center; color: #c5ccd5; background: #171b21; border: 1px solid #434b57; font-size: 24px; cursor: pointer; }
+.image-viewer > button { position: absolute; top: 18px; right: 21px; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: #c5ccd5; background: #171b21; border: 1px solid #434b57; cursor: pointer; }
+.image-viewer > button svg { display: block; width: 18px; height: 18px; stroke-width: 1.8; }
 .image-viewer > button:hover { color: #fff; border-color: #737d8b; }
 .toast { position: fixed; z-index: 10; right: 22px; bottom: 22px; padding: 11px 15px; color: #dfd4c3; background: #25211b; border: 1px solid #5d4a30; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-size: 12px; animation: toast-in .16s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
@@ -172,7 +173,8 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .editor-header { min-height: 108px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 25px; background: #14171c; border-bottom: 1px solid var(--border); }
 .editor-header h2 { margin: 5px 0 4px; color: #f0f3f7; font-size: 21px; font-weight: 650; }
 .editor-header p { margin: 0; color: var(--subtle); font-size: 10px; }
-.editor-close { width: 34px; height: 34px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 1px solid var(--border); font-size: 22px; line-height: 1; cursor: pointer; }
+.editor-close { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; color: var(--muted); background: transparent; border: 1px solid var(--border); cursor: pointer; }
+.editor-close svg { display: block; width: 16px; height: 16px; stroke-width: 1.8; }
 .editor-close:hover { color: var(--text); background: var(--surface-3); border-color: var(--border-strong); }
 .editor-close:disabled { opacity: .45; cursor: wait; }
 .editor-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 66px; }
@@ -205,7 +207,8 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .tag-input-shell input { min-width: 170px; flex: 1 1 170px; height: 26px; padding: 0 3px; color: #dce1e8; background: transparent; border: 0; outline: 0; font-size: 11px; }
 .tag-input-shell input::placeholder { color: #535c69; }
 .tag-chip { height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 5px 0 8px; color: #d2b485; background: rgba(223,155,66,.09); border: 1px solid rgba(223,155,66,.22); font-size: 10px; }
-.tag-chip button { width: 18px; height: 18px; padding: 0; color: #897861; background: transparent; border: 0; cursor: pointer; font-size: 14px; line-height: 1; }
+.tag-chip button { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; color: #897861; background: transparent; border: 0; cursor: pointer; }
+.tag-chip button svg { display: block; width: 11px; height: 11px; stroke-width: 2; }
 .tag-chip button:hover { color: #e7c48e; }
 .tag-chip button:disabled { opacity: .45; cursor: wait; }
 .tag-error { color: #df7d82; font-size: 9px; }
@@ -219,7 +222,8 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .common-tags-manager { display: grid; gap: 8px; padding: 10px; background: #111419; border: 1px solid #303641; }
 .common-tags-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .common-tags-list > span { height: 25px; display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 8px; color: #c5a978; background: rgba(223,155,66,.07); border: 1px solid rgba(223,155,66,.2); font-size: 9px; }
-.common-tags-list > span button { width: 17px; height: 17px; padding: 0; color: #83735e; background: transparent; border: 0; font-size: 13px; line-height: 1; cursor: pointer; }
+.common-tags-list > span button { width: 17px; height: 17px; display: grid; place-items: center; padding: 0; color: #83735e; background: transparent; border: 0; cursor: pointer; }
+.common-tags-list > span button svg { display: block; width: 10px; height: 10px; stroke-width: 2; }
 .common-tags-list > span button:hover { color: #e5bd80; }
 .common-tags-list > small { color: #68717e; font-size: 9px; }
 .common-tag-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }

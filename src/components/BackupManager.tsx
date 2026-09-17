@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { backupApi, type BackupOperationResult, type BackupStatus } from "../services/backup";
-import { DatabaseIcon } from "./icons";
+import { CloseIcon, DatabaseIcon } from "./icons";
 
 interface BackupManagerProps {
   onClose: () => void;
@@ -106,7 +106,7 @@ export function BackupManager({ onClose, onRestored }: BackupManagerProps) {
             <h2 id="backup-title">数据安全与备份</h2>
             <p>导出完整笔记库，或从已有备份恢复</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={Boolean(busy)} aria-label="关闭数据安全面板">×</button>
+          <button type="button" className="editor-close" onClick={onClose} disabled={Boolean(busy)} aria-label="关闭数据安全面板"><CloseIcon /></button>
         </header>
 
         <div className="backup-content">

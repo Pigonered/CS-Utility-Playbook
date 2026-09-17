@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteImage } from "../types/note";
-import { CrosshairIcon, ImageIcon, PencilIcon, TrashIcon } from "./icons";
+import { CloseIcon, CrosshairIcon, ImageIcon, PencilIcon, TrashIcon } from "./icons";
 
 interface NoteDetailProps {
   note: Note | null;
@@ -145,7 +145,7 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
         <div className="image-viewer" role="dialog" aria-modal="true" aria-label="图片大图预览" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setViewerImage(null);
         }}>
-          <button type="button" onClick={() => setViewerImage(null)} aria-label="关闭大图">×</button>
+          <button type="button" onClick={() => setViewerImage(null)} aria-label="关闭大图"><CloseIcon /></button>
           <img src={convertFileSrc(viewerImage)} alt="笔记大图预览" />
         </div>
       )}

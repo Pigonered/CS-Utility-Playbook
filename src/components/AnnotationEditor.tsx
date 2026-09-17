@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { NoteImage } from "../types/note";
+import { CloseIcon } from "./icons";
 
 type Tool = "arrow" | "circle" | "rect" | "pen" | "text";
 
@@ -335,7 +336,7 @@ export function AnnotationEditor({ image, isSaving, error, onSave, onClose }: An
             <h2 id="annotation-title">图片标注</h2>
             <p>原图会被保留，保存后生成单独的标注版本</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving} aria-label="关闭标注器">×</button>
+          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving} aria-label="关闭标注器"><CloseIcon /></button>
         </header>
 
         <div className="annotation-toolbar">

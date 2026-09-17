@@ -18,7 +18,7 @@ import {
   type Side,
   type Tag,
 } from "../types/note";
-import { ImageIcon, PlusIcon, TrashIcon } from "./icons";
+import { CloseIcon, ImageIcon, PlusIcon, TrashIcon } from "./icons";
 
 const DEFAULT_COMMON_TAGS = ["默认道具", "进攻", "防守", "残局", "必学"] as const;
 const COMMON_TAGS_STORAGE_KEY = "cs-notes.common-tags";
@@ -381,7 +381,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
             <h2 id="editor-title">{mode === "create" ? "新建笔记" : "编辑笔记"}</h2>
             <p>{mode === "create" ? "记录一个新的 CS2 道具瞄点" : "修改当前笔记的基础信息"}</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving} aria-label="关闭编辑器">×</button>
+          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving} aria-label="关闭编辑器"><CloseIcon /></button>
         </header>
 
         <form className="editor-form" onSubmit={handleSubmit} noValidate>
@@ -485,7 +485,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                   {tags.map((tag) => (
                     <span className="tag-chip" key={tag}>
                       #{tag}
-                      <button type="button" onClick={() => removeTag(tag)} disabled={isSaving} aria-label={`删除标签 ${tag}`}>×</button>
+                      <button type="button" onClick={() => removeTag(tag)} disabled={isSaving} aria-label={`删除标签 ${tag}`}><CloseIcon /></button>
                     </span>
                   ))}
                   <input
@@ -528,7 +528,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                       {commonTags.map((tag) => (
                         <span key={tag}>
                           #{tag}
-                          <button type="button" onClick={() => removeCommonTag(tag)} disabled={isSaving} aria-label={`从常用标签中删除 ${tag}`}>×</button>
+                          <button type="button" onClick={() => removeCommonTag(tag)} disabled={isSaving} aria-label={`从常用标签中删除 ${tag}`}><CloseIcon /></button>
                         </span>
                       ))}
                       {commonTags.length === 0 && <small>还没有常用标签</small>}
