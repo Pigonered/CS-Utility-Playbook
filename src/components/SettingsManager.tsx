@@ -386,7 +386,7 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
               <div>
                 <span className="eyebrow">CS UTILITY PLAYBOOK</span>
                 <h3>关于 CS道具战术本</h3>
-                <p>当前版本 <strong>0.1.2 Beta</strong></p>
+                <p>当前版本 <strong>0.1.4 Beta</strong></p>
               </div>
             </section>
 
@@ -427,7 +427,7 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
         </div>
 
         <footer className="settings-footer">
-          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.2 Beta"}</span>
+          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.4 Beta"}</span>
           <button type="button" className="secondary-button" onClick={onClose} disabled={Boolean(busy) || isBinding}>完成</button>
         </footer>
       </section>
