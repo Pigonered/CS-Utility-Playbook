@@ -1,10 +1,22 @@
-export const MAPS = ["Mirage", "Inferno", "Dust2", "Ancient", "Nuke", "Anubis", "Train"] as const;
+export const DEFAULT_MAPS = [
+  "Mirage",
+  "Inferno",
+  "Dust2",
+  "Ancient",
+  "Nuke",
+  "Anubis",
+  "Train",
+  "Cache",
+  "Overpass",
+  "Vertigo",
+] as const;
 export const SIDES = ["T", "CT"] as const;
 export const GRENADE_TYPES = ["Smoke", "Flash", "Molotov", "HE", "Other"] as const;
 export const IMAGE_TYPES = ["站位", "瞄点", "效果", "其他"] as const;
 export const THROW_TYPES = ["左键", "右键", "左右键", "Jump Throw", "Run Throw", "Walk Throw"] as const;
 
-export type MapName = (typeof MAPS)[number];
+// 地图列表支持由用户扩展，因此地图名不能再限制为编译期的固定联合类型。
+export type MapName = string;
 export type Side = (typeof SIDES)[number];
 export type GrenadeType = (typeof GRENADE_TYPES)[number];
 export type ImageType = (typeof IMAGE_TYPES)[number];

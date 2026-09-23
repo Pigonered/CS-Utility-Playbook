@@ -5,7 +5,6 @@ import {
   GRENADE_TYPES,
   GRENADE_TYPE_LABELS,
   IMAGE_TYPES,
-  MAPS,
   SIDES,
   THROW_TYPES,
   THROW_TYPE_LABELS,
@@ -43,6 +42,7 @@ interface FormState {
 interface NoteEditorProps {
   mode: "create" | "edit";
   note: Note | null;
+  maps: readonly MapName[];
   capturedImagePaths?: string[];
   availableTags: Tag[];
   screenshotShortcut: string | null;
@@ -141,7 +141,7 @@ const fieldLabels: Record<RequiredField, string> = {
   grenadeType: "道具类型",
 };
 
-export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
+export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availableTags, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
   const [form, setForm] = useState<FormState>(() => createInitialState(note));
   const [images, setImages] = useState<EditorImage[]>(() => createInitialImages(note, capturedImagePaths));
   const [tags, setTags] = useState<string[]>(() => note?.tags.map((tag) => tag.name) ?? []);
@@ -407,7 +407,7 @@ export function NoteEditor({ mode, note, capturedImagePaths = [], availableTags,
                   <span>地图 <b>*</b></span>
                   <select value={form.mapName} onChange={(event) => setField("mapName", event.target.value as MapName | "")} disabled={isSaving}>
                     <option value="">选择地图</option>
-                    {MAPS.map((map) => <option key={map} value={map}>{map}</option>)}
+                    {maps.map((map) => <option key={map} value={map}>{map}</option>)}
                   </select>
                   {fieldErrors.mapName && <small className="field-error">{fieldErrors.mapName}</small>}
                 </label>

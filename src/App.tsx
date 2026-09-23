@@ -11,9 +11,47 @@ import { notesApi } from "./services/notes";
 import { screenshotApi } from "./services/screenshot";
 import type { BackupOperationResult } from "./services/backup";
 import { settingsApi, type AppSettings } from "./services/settings";
-import { grenadeTypeLabel, throwTypeLabel, type Note, type NoteFilters, type NoteImage, type NoteImageInput, type NoteInput, type Tag } from "./types/note";
+import { DEFAULT_MAPS, grenadeTypeLabel, throwTypeLabel, type MapName, type Note, type NoteFilters, type NoteImage, type NoteImageInput, type NoteInput, type Tag } from "./types/note";
 
 const initialFilters: NoteFilters = { mapName: null, side: null, grenadeType: null, tagName: null };
+const MAP_PREFERENCES_STORAGE_KEY = "cs-notes.map-preferences";
+
+interface MapPreferences {
+  order: MapName[];
+  hidden: MapName[];
+}
+
+function uniqueMaps(values: unknown[]): MapName[] {
+  const names: MapName[] = [];
+  const keys = new Set<string>();
+  values.forEach((value) => {
+    if (typeof value !== "string") return;
+    const name = value.trim().replace(/\s+/g, " ");
+    const key = name.toLocaleLowerCase("en");
+    if (!name || keys.has(key)) return;
+    keys.add(key);
+    names.push(name);
+  });
+  return names;
+}
+
+function loadMapPreferences(): MapPreferences {
+  try {
+    const saved = window.localStorage.getItem(MAP_PREFERENCES_STORAGE_KEY);
+    if (!saved) return { order: [...DEFAULT_MAPS], hidden: [] };
+    const parsed: unknown = JSON.parse(saved);
+    if (!parsed || typeof parsed !== "object") throw new Error("invalid map preferences");
+    const candidate = parsed as Partial<MapPreferences>;
+    const savedOrder = Array.isArray(candidate.order) ? uniqueMaps(candidate.order) : [];
+    const order = uniqueMaps([...savedOrder, ...DEFAULT_MAPS]);
+    const hidden = Array.isArray(candidate.hidden)
+      ? uniqueMaps(candidate.hidden).filter((name) => order.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en")))
+      : [];
+    return { order, hidden };
+  } catch {
+    return { order: [...DEFAULT_MAPS], hidden: [] };
+  }
+}
 
 type EditorState =
   | { mode: "create"; note: null; temporaryImagePaths: string[] }
@@ -29,6 +67,7 @@ function App() {
   const [filters, setFilters] = useState<NoteFilters>(initialFilters);
   const [searchQuery, setSearchQuery] = useState("");
   const [notes, setNotes] = useState<Note[]>([]);
+  const [mapPreferences, setMapPreferences] = useState<MapPreferences>(loadMapPreferences);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -83,6 +122,14 @@ function App() {
   useEffect(() => {
     void loadNotes();
   }, [loadNotes]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MAP_PREFERENCES_STORAGE_KEY, JSON.stringify(mapPreferences));
+    } catch {
+      // 存储不可用时仍保留当前会话中的地图设置。
+    }
+  }, [mapPreferences]);
 
   useEffect(() => {
     void settingsApi.get()
@@ -157,6 +204,19 @@ function App() {
       return searchable.some((value) => value.toLocaleLowerCase("zh-CN").includes(query));
     });
   }, [filters, notes, searchQuery]);
+
+  const mapOptions = useMemo(
+    () => uniqueMaps([...mapPreferences.order, ...notes.map((note) => note.mapName)]),
+    [mapPreferences.order, notes],
+  );
+
+  const updateMaps = (order: MapName[], hidden: MapName[]) => {
+    const normalizedOrder = uniqueMaps(order);
+    const normalizedHidden = uniqueMaps(hidden).filter((name) => (
+      normalizedOrder.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en"))
+    ));
+    setMapPreferences({ order: normalizedOrder, hidden: normalizedHidden });
+  };
 
   useEffect(() => {
     if (filteredNotes.length === 0) {
@@ -334,7 +394,15 @@ function App() {
         onOpenSettings={() => openSettingsManager("settings")}
       />
       <div className="workspace">
-        <Sidebar filters={filters} tags={availableTags} screenshotShortcut={appSettings.screenshotShortcut} onChange={setFilters} />
+        <Sidebar
+          filters={filters}
+          tags={availableTags}
+          maps={mapOptions}
+          hiddenMaps={mapPreferences.hidden}
+          screenshotShortcut={appSettings.screenshotShortcut}
+          onChange={setFilters}
+          onMapsChange={updateMaps}
+        />
         <NoteList
           notes={filteredNotes}
           selectedId={selectedId}
@@ -360,6 +428,7 @@ function App() {
           key={editor.mode === "create" ? "create" : `edit-${editor.note.id}`}
           mode={editor.mode}
           note={editor.note}
+          maps={mapOptions}
           capturedImagePaths={editor.temporaryImagePaths}
           availableTags={availableTags}
           screenshotShortcut={appSettings.screenshotShortcut}
