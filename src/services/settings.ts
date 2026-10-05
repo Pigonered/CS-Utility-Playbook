@@ -6,6 +6,7 @@ export interface AppSettings {
   screenshotShortcut: string | null;
   closeToTray: boolean;
   openNoteAfterCapture: boolean;
+  hideBeforeCapture: boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -32,6 +33,9 @@ export const settingsApi = {
   ),
   setOpenNoteAfterCapture: (enabled: boolean) => (
     call<AppSettings>("set_open_note_after_capture", { enabled })
+  ),
+  setHideBeforeCapture: (enabled: boolean) => (
+    call<AppSettings>("set_hide_before_capture", { enabled })
   ),
   chooseDataDirectory: async () => {
     const selected = await open({

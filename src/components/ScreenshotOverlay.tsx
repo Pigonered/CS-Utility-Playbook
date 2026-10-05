@@ -33,6 +33,7 @@ function makeSelection(origin: Point, point: Point): SelectionRect {
 export function ScreenshotOverlay() {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const originRef = useRef<Point | null>(null);
+  const captureIdRef = useRef<number | null>(null);
   const [session, setSession] = useState<PreparedSession | null>(null);
   const [selection, setSelection] = useState<SelectionRect | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -45,6 +46,7 @@ export function ScreenshotOverlay() {
     let preparationId = 0;
 
     const prepareSession = async (nextSession: CaptureSession) => {
+      captureIdRef.current = nextSession.captureId;
       const currentPreparation = ++preparationId;
       const imageUrl = convertFileSrc(nextSession.imagePath);
       const preload = new Image();
@@ -60,11 +62,11 @@ export function ScreenshotOverlay() {
           setError(null);
           setSession({ ...nextSession, imageUrl });
         });
-        await screenshotApi.showOverlay();
+        await screenshotApi.showOverlay(nextSession.captureId);
       } catch (preloadError) {
         if (disposed || currentPreparation !== preparationId) return;
         setError(preloadError instanceof Error ? preloadError.message : "无法载入截图画面");
-        await screenshotApi.cancel().catch(() => undefined);
+        await screenshotApi.cancel(nextSession.captureId).catch(() => undefined);
       }
     };
 
@@ -84,7 +86,7 @@ export function ScreenshotOverlay() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        void screenshotApi.cancel();
+        if (captureIdRef.current !== null) void screenshotApi.cancel(captureIdRef.current).catch(() => undefined);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -122,7 +124,7 @@ export function ScreenshotOverlay() {
   const handlePointerUp = async (event: ReactPointerEvent<HTMLDivElement>) => {
     const origin = originRef.current;
     originRef.current = null;
-    if (!origin || isCompleting) return;
+    if (!origin || isCompleting || !session) return;
 
     const nextSelection = makeSelection(origin, pointFromEvent(event));
     if (nextSelection.width < 6 || nextSelection.height < 6) {
@@ -135,7 +137,7 @@ export function ScreenshotOverlay() {
     setSelection(nextSelection);
     setIsCompleting(true);
     try {
-      await screenshotApi.complete({
+      await screenshotApi.complete(session.captureId, {
         x: nextSelection.left / bounds.width,
         y: nextSelection.top / bounds.height,
         width: nextSelection.width / bounds.width,

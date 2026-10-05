@@ -17,6 +17,7 @@ struct PersistedSettings {
     screenshot_shortcut: Option<String>,
     close_to_tray: bool,
     open_note_after_capture: bool,
+    hide_before_capture: bool,
 }
 
 impl Default for PersistedSettings {
@@ -26,6 +27,7 @@ impl Default for PersistedSettings {
             screenshot_shortcut: Some("Alt+Q".to_string()),
             close_to_tray: true,
             open_note_after_capture: true,
+            hide_before_capture: true,
         }
     }
 }
@@ -37,6 +39,7 @@ pub struct SettingsSnapshot {
     screenshot_shortcut: Option<String>,
     close_to_tray: bool,
     open_note_after_capture: bool,
+    hide_before_capture: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -101,7 +104,27 @@ impl SettingsManager {
             screenshot_shortcut: self.screenshot_shortcut()?,
             close_to_tray: self.close_to_tray()?,
             open_note_after_capture: self.open_note_after_capture()?,
+            hide_before_capture: self.hide_before_capture()?,
         })
+    }
+
+    pub fn hide_before_capture(&self) -> SettingsResult<bool> {
+        self.settings
+            .lock()
+            .map(|settings| settings.hide_before_capture)
+            .map_err(|_| "设置状态不可用".to_string())
+    }
+
+    fn update_hide_before_capture(&self, enabled: bool) -> SettingsResult<()> {
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| "设置状态不可用".to_string())?;
+        let mut next = guard.clone();
+        next.hide_before_capture = enabled;
+        self.save(&next)?;
+        *guard = next;
+        Ok(())
     }
 
     fn save(&self, settings: &PersistedSettings) -> SettingsResult<()> {
@@ -258,6 +281,15 @@ pub fn set_open_note_after_capture(
 }
 
 #[tauri::command]
+pub fn set_hide_before_capture(
+    enabled: bool,
+    settings: State<'_, SettingsManager>,
+) -> SettingsResult<SettingsSnapshot> {
+    settings.update_hide_before_capture(enabled)?;
+    settings.snapshot()
+}
+
+#[tauri::command]
 pub async fn change_data_directory(
     destination: String,
     app: AppHandle,
@@ -311,6 +343,7 @@ mod tests {
         )
         .expect("legacy settings should load");
         assert!(settings.open_note_after_capture);
+        assert!(settings.hide_before_capture);
     }
 
     #[test]
@@ -344,6 +377,9 @@ mod tests {
         manager
             .update_open_note_after_capture(false)
             .expect("capture navigation should save");
+        manager
+            .update_hide_before_capture(false)
+            .expect("capture hiding should save");
 
         let reloaded = SettingsManager::new(config_path, root.join("unused-default"))
             .expect("settings should reload");
@@ -361,6 +397,9 @@ mod tests {
         assert!(!reloaded
             .open_note_after_capture()
             .expect("capture navigation should load"));
+        assert!(!reloaded
+            .hide_before_capture()
+            .expect("capture hiding should load"));
 
         fs::remove_dir_all(root).expect("test directory should be removed");
     }

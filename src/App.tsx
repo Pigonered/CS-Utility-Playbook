@@ -89,6 +89,7 @@ function App() {
     screenshotShortcut: "Alt+Q",
     closeToTray: true,
     openNoteAfterCapture: true,
+    hideBeforeCapture: true,
   });
   const [notice, setNotice] = useState<string | null>(null);
 

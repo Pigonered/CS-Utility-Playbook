@@ -25,6 +25,7 @@ uuid = { version = "1", features = ["v4"] }
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 base64 = "0.22"
 zip = { version = "4", default-features = false, features = ["deflate"] }
+tauri-plugin-clipboard-manager = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

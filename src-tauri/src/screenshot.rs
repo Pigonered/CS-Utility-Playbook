@@ -4,8 +4,8 @@ use std::{
     fs,
     io::{BufWriter, ErrorKind, Write},
     path::{Component, Path, PathBuf},
-    sync::Mutex,
-    time::Instant,
+    sync::{mpsc, Mutex},
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -43,6 +43,7 @@ fn unregister_cancel_shortcuts(app: &AppHandle) {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureSession {
+    capture_id: u64,
     image_path: String,
     width: u32,
     height: u32,
@@ -68,6 +69,22 @@ struct CaptureState {
     active_id: Option<u64>,
     session: Option<CaptureSession>,
     previous_foreground_window: Option<isize>,
+    window_state: Option<CaptureWindowState>,
+}
+
+#[derive(Clone, Debug)]
+struct CaptureWindowState {
+    visible: bool,
+    minimized: bool,
+    hidden: bool,
+    was_foreground: bool,
+    target_foreground_window: Option<isize>,
+}
+
+struct FinishedCapture {
+    session: Option<CaptureSession>,
+    previous_foreground_window: Option<isize>,
+    window_state: Option<CaptureWindowState>,
 }
 
 #[derive(Debug)]
@@ -109,6 +126,7 @@ impl ScreenshotManager {
         let capture_id = state.next_id;
         state.active_id = Some(capture_id);
         state.session = None;
+        state.window_state = None;
         state.previous_foreground_window = previous_foreground_window;
         Ok(capture_id)
     }
@@ -134,34 +152,24 @@ impl ScreenshotManager {
             .ok_or_else(|| "没有可用的截图画面".to_string())
     }
 
-    fn finish(&self) -> Result<(Option<CaptureSession>, Option<isize>), String> {
+    fn active_id(&self) -> Option<u64> {
+        self.state.lock().ok().and_then(|state| state.active_id)
+    }
+
+    fn finish(&self, capture_id: u64) -> Result<Option<FinishedCapture>, String> {
         let mut state = self
             .state
             .lock()
             .map_err(|_| "截图状态不可用".to_string())?;
-        state.active_id = None;
-        Ok((
-            state.session.take(),
-            state.previous_foreground_window.take(),
-        ))
-    }
-
-    fn reset_after_error(
-        &self,
-        capture_id: u64,
-    ) -> Result<(bool, Option<CaptureSession>, Option<isize>), String> {
-        let Ok(mut state) = self.state.lock() else {
-            return Err("截图状态不可用".to_string());
-        };
         if state.active_id != Some(capture_id) {
-            return Ok((false, None, None));
+            return Ok(None);
         }
         state.active_id = None;
-        Ok((
-            true,
-            state.session.take(),
-            state.previous_foreground_window.take(),
-        ))
+        Ok(Some(FinishedCapture {
+            session: state.session.take(),
+            previous_foreground_window: state.previous_foreground_window.take(),
+            window_state: state.window_state.take(),
+        }))
     }
 
     fn raw_path(&self) -> PathBuf {
@@ -172,6 +180,11 @@ impl ScreenshotManager {
     fn result_path(&self) -> PathBuf {
         self.capture_directory
             .join(format!("capture-{}.png", Uuid::new_v4()))
+    }
+
+    pub(crate) fn clipboard_path(&self) -> PathBuf {
+        self.capture_directory
+            .join(format!("clipboard-{}.png", Uuid::new_v4()))
     }
 
     fn is_managed_temp_path(&self, path: &Path) -> bool {
@@ -193,7 +206,6 @@ pub fn begin_capture(app: AppHandle) {
         // The global-shortcut plugin holds its shortcut-map lock while invoking
         // handlers. Register on this worker only after the triggering handler has
         // returned, otherwise pressing the capture shortcut deadlocks the app.
-        register_cancel_shortcuts(&app);
         let started_at = Instant::now();
         if let Err(error) = capture_primary_monitor(&app, capture_id) {
             fail_capture(&app, capture_id, error);
@@ -204,21 +216,100 @@ pub fn begin_capture(app: AppHandle) {
 }
 
 fn capture_primary_monitor(app: &AppHandle, capture_id: u64) -> Result<(), String> {
+    let hidden = on_main_thread(app, move |app| {
+        let manager = app.state::<ScreenshotManager>();
+        if manager.active_id() != Some(capture_id) {
+            return Ok(false);
+        }
+        // Do not hold the capture mutex while acquiring the shortcut-map lock:
+        // shortcut callbacks acquire these locks in the opposite order.
+        register_cancel_shortcuts(&app);
+        let mut state = manager
+            .state
+            .lock()
+            .map_err(|_| "截图状态不可用".to_string())?;
+        if state.active_id != Some(capture_id) {
+            return Ok(false);
+        }
+        let hide = app
+            .state::<crate::settings::SettingsManager>()
+            .hide_before_capture()?;
+        if let Some(window) = app.get_webview_window("main") {
+            let visible = window.is_visible().map_err(|error| error.to_string())?;
+            let minimized = window.is_minimized().map_err(|error| error.to_string())?;
+            let was_foreground =
+                main_window_is_foreground(&window, state.previous_foreground_window);
+            state.window_state = Some(CaptureWindowState {
+                visible,
+                minimized,
+                hidden: hide && visible,
+                was_foreground,
+                target_foreground_window: state.previous_foreground_window,
+            });
+            if hide && visible {
+                window
+                    .hide()
+                    .map_err(|error| format!("无法隐藏应用窗口：{error}"))?;
+            }
+            return Ok(hide && visible);
+        }
+        Ok(false)
+    })?;
+    if hidden {
+        std::thread::sleep(Duration::from_millis(100));
+        #[cfg(windows)]
+        unsafe {
+            windows_sys::Win32::Graphics::Dwm::DwmFlush();
+        }
+    }
     let manager = app.state::<ScreenshotManager>();
+    if manager.active_id() != Some(capture_id) {
+        return Ok(());
+    }
+    on_main_thread(app, move |app| {
+        let manager = app.state::<ScreenshotManager>();
+        let mut state = manager
+            .state
+            .lock()
+            .map_err(|_| "截图状态不可用".to_string())?;
+        if state.active_id != Some(capture_id) {
+            return Ok(());
+        }
+        if let Some(snapshot) = state.window_state.as_mut() {
+            if snapshot.hidden && snapshot.was_foreground {
+                snapshot.target_foreground_window = current_foreground_window();
+            }
+        }
+        Ok(())
+    })?;
     let image_path = manager.raw_path();
-    let (width, height) = capture_primary_to_bmp(&image_path)?;
+    let (width, height) = match capture_primary_to_bmp(&image_path) {
+        Ok(size) => size,
+        Err(error) => {
+            remove_file_if_present(&image_path);
+            return Err(error);
+        }
+    };
 
     let session = CaptureSession {
+        capture_id,
         image_path: image_path.to_string_lossy().into_owned(),
         width,
         height,
     };
-    if !manager.set_session(capture_id, session.clone())? {
+    let accepted = on_main_thread(app, move |app| {
+        let manager = app.state::<ScreenshotManager>();
+        if !manager.set_session(capture_id, session.clone())? {
+            return Ok(false);
+        }
+        app.emit_to(OVERLAY_LABEL, "capture-ready", session)
+            .map_err(|error| format!("无法准备截图界面：{error}"))?;
+        Ok(true)
+    })?;
+    if !accepted {
         remove_file_if_present(&image_path);
         return Ok(());
     }
-    app.emit_to(OVERLAY_LABEL, "capture-ready", session)
-        .map_err(|error| format!("无法准备截图界面：{error}"))?;
     Ok(())
 }
 
@@ -246,24 +337,115 @@ pub fn prepare_overlay(app: &AppHandle) -> Result<(), String> {
 }
 
 fn fail_capture(app: &AppHandle, capture_id: u64, message: String) {
-    let manager = app.state::<ScreenshotManager>();
-    let Ok((was_active, session, previous_foreground_window)) =
-        manager.reset_after_error(capture_id)
-    else {
-        return;
+    let _ = on_main_thread(app, move |app| {
+        if finish_capture(&app, capture_id, None)? {
+            let _ = app.emit_to("main", "screenshot-error", message);
+        }
+        Ok(())
+    });
+}
+
+// All window transitions run on the UI thread, so cancellation cannot interleave
+// with hiding/showing a window from an older capture worker.
+fn on_main_thread<T: Send + 'static>(
+    app: &AppHandle,
+    task: impl FnOnce(AppHandle) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = sender.send(task(handle));
+    })
+    .map_err(|error| format!("无法更新截图窗口：{error}"))?;
+    receiver
+        .recv()
+        .map_err(|_| "截图窗口任务已中断".to_string())?
+}
+
+fn finish_capture(
+    app: &AppHandle,
+    capture_id: u64,
+    result_path: Option<String>,
+) -> Result<bool, String> {
+    let Some(finished) = app.state::<ScreenshotManager>().finish(capture_id)? else {
+        return Ok(false);
     };
-    if !was_active {
-        return;
-    }
-    if let Some(session) = session {
+    if let Some(session) = finished.session {
         remove_file_if_present(Path::new(&session.image_path));
     }
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
     }
-    restore_foreground_window(previous_foreground_window);
     unregister_cancel_shortcuts(app);
-    let _ = app.emit_to("main", "screenshot-error", message);
+    if let Some(path) = result_path {
+        // Deliver the image before activating the main window; a delivery failure
+        // must restore the original state rather than silently lose the screenshot.
+        if let Err(error) =
+            app.emit_to("main", "screenshot-completed", ScreenshotCompleted { path })
+        {
+            restore_capture_window(
+                app,
+                finished.window_state.as_ref(),
+                finished.previous_foreground_window,
+            );
+            return Err(format!("无法打开截图笔记：{error}"));
+        }
+        if app
+            .state::<crate::settings::SettingsManager>()
+            .open_note_after_capture()
+            .unwrap_or(true)
+        {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        } else {
+            let target = finished
+                .window_state
+                .as_ref()
+                .and_then(|state| state.target_foreground_window)
+                .or(finished.previous_foreground_window);
+            restore_foreground_window(target);
+        }
+    } else {
+        restore_capture_window(
+            app,
+            finished.window_state.as_ref(),
+            finished.previous_foreground_window,
+        );
+    }
+    Ok(true)
+}
+
+fn restore_capture_window(
+    app: &AppHandle,
+    snapshot: Option<&CaptureWindowState>,
+    foreground: Option<isize>,
+) {
+    if let Some(snapshot) = snapshot {
+        if snapshot.hidden && snapshot.visible {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                if snapshot.minimized {
+                    let _ = window.minimize();
+                } else if snapshot.was_foreground {
+                    let _ = window.set_focus();
+                }
+            }
+        }
+    }
+    restore_foreground_window(foreground);
+}
+
+#[cfg(windows)]
+fn main_window_is_foreground(window: &tauri::WebviewWindow, foreground: Option<isize>) -> bool {
+    foreground.is_some() && window.hwnd().ok().map(|handle| handle.0 as isize) == foreground
+}
+
+#[cfg(not(windows))]
+fn main_window_is_foreground(_window: &tauri::WebviewWindow, _foreground: Option<isize>) -> bool {
+    false
 }
 
 #[tauri::command]
@@ -274,88 +456,102 @@ pub fn get_capture_session(
 }
 
 #[tauri::command]
-pub fn show_capture_overlay(app: AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window(OVERLAY_LABEL)
-        .ok_or_else(|| "截图窗口尚未准备好".to_string())?;
-    window
-        .show()
-        .map_err(|error| format!("无法显示截图窗口：{error}"))?;
-    window
-        .set_focus()
-        .map_err(|error| format!("无法聚焦截图窗口：{error}"))?;
-    Ok(())
+pub async fn show_capture_overlay(capture_id: u64, app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        on_main_thread(&app, move |app| {
+            let session = app.state::<ScreenshotManager>().session()?;
+            if session.capture_id != capture_id {
+                return Err("该截图已取消或过期".to_string());
+            }
+            let window = app
+                .get_webview_window(OVERLAY_LABEL)
+                .ok_or_else(|| "截图窗口尚未准备好".to_string())?;
+            window
+                .show()
+                .map_err(|error| format!("无法显示截图窗口：{error}"))?;
+            window
+                .set_focus()
+                .map_err(|error| format!("无法聚焦截图窗口：{error}"))?;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn complete_capture(
+pub async fn complete_capture(
+    capture_id: u64,
     selection: CaptureSelection,
     app: AppHandle,
-    manager: State<'_, ScreenshotManager>,
 ) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = complete_capture_inner(capture_id, selection, &app);
+        if let Err(error) = &result {
+            fail_capture(&app, capture_id, error.clone());
+        }
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn complete_capture_inner(
+    capture_id: u64,
+    selection: CaptureSelection,
+    app: &AppHandle,
+) -> Result<String, String> {
+    let manager = app.state::<ScreenshotManager>();
     let session = manager.session()?;
+    if session.capture_id != capture_id {
+        return Err("该截图已取消或过期".to_string());
+    }
     let source =
         image::open(&session.image_path).map_err(|error| format!("无法读取截图：{error}"))?;
     let (source_width, source_height) = source.dimensions();
     let (x, y, width, height) = selection_to_pixels(selection, source_width, source_height)?;
     let cropped = source.crop_imm(x, y, width, height);
     let result_path = manager.result_path();
-    cropped
-        .save(&result_path)
-        .map_err(|error| format!("无法保存框选截图：{error}"))?;
-
-    remove_file_if_present(Path::new(&session.image_path));
-    let (_, previous_foreground_window) = manager.finish()?;
-
-    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = window.hide();
-    }
-    unregister_cancel_shortcuts(&app);
-    let open_note_after_capture = app
-        .try_state::<crate::settings::SettingsManager>()
-        .and_then(|settings| settings.open_note_after_capture().ok())
-        .unwrap_or(true);
-    if open_note_after_capture {
-        if let Some(main_window) = app.get_webview_window("main") {
-            let _ = main_window.show();
-            let _ = main_window.unminimize();
-            let _ = main_window.set_focus();
+    let result = (|| {
+        cropped
+            .save(&result_path)
+            .map_err(|error| format!("无法保存框选截图：{error}"))?;
+        let path = result_path.to_string_lossy().into_owned();
+        let delivered = path.clone();
+        if !on_main_thread(app, move |app| {
+            finish_capture(&app, capture_id, Some(delivered))
+        })? {
+            return Err("该截图已取消或过期".to_string());
         }
-    } else {
-        restore_foreground_window(previous_foreground_window);
+        Ok(path)
+    })();
+    if result.is_err() {
+        remove_file_if_present(&result_path);
     }
-
-    let path = result_path.to_string_lossy().into_owned();
-    app.emit_to(
-        "main",
-        "screenshot-completed",
-        ScreenshotCompleted { path: path.clone() },
-    )
-    .map_err(|error| format!("无法打开截图笔记：{error}"))?;
-    Ok(path)
+    result
 }
 
 #[tauri::command]
-pub fn cancel_capture(app: AppHandle, manager: State<'_, ScreenshotManager>) -> Result<(), String> {
-    cancel_capture_inner(&app, &manager)
+pub async fn cancel_capture(capture_id: u64, app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cancel_capture_inner(&app, capture_id))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
-pub fn cancel_active_capture(app: &AppHandle) {
-    let manager = app.state::<ScreenshotManager>();
-    let _ = cancel_capture_inner(app, &manager);
+pub fn active_capture_id(app: &AppHandle) -> Option<u64> {
+    app.state::<ScreenshotManager>().active_id()
 }
 
-fn cancel_capture_inner(app: &AppHandle, manager: &ScreenshotManager) -> Result<(), String> {
-    let (session, previous_foreground_window) = manager.finish()?;
-    if let Some(session) = session {
-        remove_file_if_present(Path::new(&session.image_path));
+pub fn cancel_active_capture(app: &AppHandle, capture_id: Option<u64>) {
+    if let Some(capture_id) = capture_id {
+        let _ = cancel_capture_inner(app, capture_id);
     }
-    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = window.hide();
-    }
-    restore_foreground_window(previous_foreground_window);
-    unregister_cancel_shortcuts(app);
-    Ok(())
+}
+
+fn cancel_capture_inner(app: &AppHandle, capture_id: u64) -> Result<(), String> {
+    on_main_thread(app, move |app| {
+        finish_capture(&app, capture_id, None).map(|_| ())
+    })
 }
 
 #[cfg(windows)]
@@ -600,6 +796,70 @@ fn remove_file_if_present(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_capture_workers_cannot_restore_or_replace_a_new_capture() {
+        let root = std::env::temp_dir().join(format!("capture-state-test-{}", Uuid::new_v4()));
+        let manager = ScreenshotManager::new(root.clone()).unwrap();
+        let first = manager.begin(Some(11)).unwrap();
+        assert!(manager.begin(Some(22)).is_err());
+        assert_eq!(
+            manager
+                .finish(first)
+                .unwrap()
+                .unwrap()
+                .previous_foreground_window,
+            Some(11)
+        );
+        assert!(manager.finish(first).unwrap().is_none());
+
+        let second = manager.begin(Some(22)).unwrap();
+        let stale_session = CaptureSession {
+            capture_id: first,
+            image_path: "stale.bmp".into(),
+            width: 10,
+            height: 10,
+        };
+        assert!(!manager.set_session(first, stale_session).unwrap());
+        assert!(manager.finish(first).unwrap().is_none());
+        assert_eq!(manager.active_id(), Some(second));
+        assert!(manager.session().is_err());
+
+        let current_session = CaptureSession {
+            capture_id: second,
+            image_path: "current.bmp".into(),
+            width: 10,
+            height: 10,
+        };
+        assert!(manager.set_session(second, current_session).unwrap());
+        assert_eq!(manager.session().unwrap().capture_id, second);
+        manager.state.lock().unwrap().window_state = Some(CaptureWindowState {
+            visible: true,
+            minimized: true,
+            hidden: true,
+            was_foreground: false,
+            target_foreground_window: Some(33),
+        });
+        let finished = manager.finish(second).unwrap().unwrap();
+        assert_eq!(finished.session.unwrap().capture_id, second);
+        let snapshot = finished.window_state.unwrap();
+        assert!(snapshot.visible && snapshot.hidden && snapshot.minimized);
+        assert_eq!(snapshot.target_foreground_window, Some(33));
+        assert!(manager.finish(second).unwrap().is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clipboard_temp_files_use_the_managed_capture_directory() {
+        let root = std::env::temp_dir().join(format!("capture-temp-test-{}", Uuid::new_v4()));
+        let manager = ScreenshotManager::new(root.clone()).unwrap();
+        let first = manager.clipboard_path();
+        assert!(manager.is_managed_temp_path(&first));
+        assert_ne!(first, manager.clipboard_path());
+        assert!(!manager.is_managed_temp_path(&root.join("outside.png")));
+        assert!(!manager.is_managed_temp_path(&manager.capture_directory.join("..\\outside.png")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn converts_normalized_selection_to_pixels() {

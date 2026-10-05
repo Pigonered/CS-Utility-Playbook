@@ -252,7 +252,7 @@ impl Database {
                     optional_text(&input.start_position),
                     optional_text(&input.target_position),
                     optional_text(&input.throw_type),
-                    optional_text(&input.description),
+                    optional_description(&input.description),
                 ],
             )
             .map_err(database_error)?;
@@ -291,7 +291,7 @@ impl Database {
                     optional_text(&input.start_position),
                     optional_text(&input.target_position),
                     optional_text(&input.throw_type),
-                    optional_text(&input.description),
+                    optional_description(&input.description),
                     id,
                 ],
             )
@@ -364,7 +364,7 @@ impl Database {
                             optional_text(&input.start_position),
                             optional_text(&input.target_position),
                             optional_text(&input.throw_type),
-                            optional_text(&input.description),
+                            optional_description(&input.description),
                             note_id,
                         ],
                     )
@@ -388,7 +388,7 @@ impl Database {
                             optional_text(&input.start_position),
                             optional_text(&input.target_position),
                             optional_text(&input.throw_type),
-                            optional_text(&input.description),
+                            optional_description(&input.description),
                         ],
                     )
                     .map_err(database_error)?;
@@ -761,6 +761,10 @@ fn optional_text(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
+fn optional_description(value: &str) -> Option<String> {
+    (!value.trim().is_empty()).then(|| value.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
 fn default_image_type() -> String {
     "其他".to_string()
 }
@@ -986,6 +990,54 @@ mod tests {
             description: "测试描述".to_string(),
             tags: vec!["默认道具".to_string(), "进攻".to_string()],
         }
+    }
+
+    #[test]
+    fn descriptions_preserve_layout_across_all_save_paths() {
+        let (database, directory) = test_database();
+        let descriptions = [
+            "\n  第一行\n\n    第二行  \n",
+            "\r\n  Windows 换行\r\n\r\n下一行\r\n",
+            "\r  单独回车\r\r下一行\r",
+            " \t\r\n  ",
+        ];
+
+        for description in descriptions {
+            let expected = if description.trim().is_empty() {
+                String::new()
+            } else {
+                description.replace("\r\n", "\n").replace('\r', "\n")
+            };
+            let mut input = sample_input("备注排版测试");
+            input.description = description.to_string();
+            let created = database
+                .create_note(input.clone())
+                .expect("note should create");
+            assert_eq!(created.description, expected);
+
+            let updated = database
+                .update_note(created.id, input.clone())
+                .expect("note should update");
+            assert_eq!(updated.description, expected);
+
+            let created_with_images = database
+                .save_note_with_images(None, input.clone(), Vec::new())
+                .expect("editor should create note");
+            assert_eq!(created_with_images.description, expected);
+
+            let updated_with_images = database
+                .save_note_with_images(Some(created_with_images.id), input, Vec::new())
+                .expect("editor should update note");
+            assert_eq!(updated_with_images.description, expected);
+
+            let reopened = Database::new(directory.join("notebook.db"))
+                .get_note(created_with_images.id)
+                .expect("note should reload")
+                .expect("note should exist");
+            assert_eq!(reopened.description, expected);
+        }
+
+        fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[test]

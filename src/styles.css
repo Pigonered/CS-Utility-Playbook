@@ -175,7 +175,7 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .empty-images svg { width: 22px; height: 22px; color: #4c5563; }
 .empty-images span { color: #8d96a4; font-size: 11px; }
 .empty-images small { font-size: 9px; }
-.description-section p { margin: 12px 0 0; color: #aab2be; font-size: 12px; line-height: 1.8; }
+.description-section p { margin: 12px 0 0; color: #aab2be; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 12px; }
 .tag-list button { padding: 5px 8px; color: #c4a77e; background: rgba(223,155,66,.08); border: 1px solid rgba(223,155,66,.18); font-size: 10px; cursor: pointer; }
 .tag-list button:hover { color: #f0cf9e; background: rgba(223,155,66,.14); border-color: rgba(223,155,66,.38); }
@@ -284,6 +284,8 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .common-tag-add-row > button:disabled, .common-tags-list button:disabled { opacity: .45; cursor: wait; }
 .form-submit-error { padding: 10px 12px; color: #e39a9e; background: rgba(228,109,114,.08); border: 1px solid rgba(228,109,114,.25); font-size: 10px; line-height: 1.5; }
 .image-form-section { padding-bottom: 18px; }
+.image-form-section:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.image-import-actions { display: grid; gap: 8px; }
 .continuous-capture-tip { display: flex; align-items: center; gap: 5px; margin-bottom: 9px; padding: 7px 9px; color: #818b99; background: rgba(211,164,95,.06); border-left: 2px solid #8b6838; font-size: 9px; }
 .continuous-capture-tip p { margin: 0 0 0 4px; }
 .continuous-capture-tip .shortcut-key { min-width: 24px; height: 20px; display: grid; place-items: center; padding: 0 5px; color: #d4b37d; background: #1b1e24; border: 1px solid #3f3529; font-size: 9px; }

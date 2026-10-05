@@ -11,7 +11,7 @@ interface SettingsManagerProps {
   onRestored: (result: BackupOperationResult) => Promise<void>;
 }
 
-type BusyAction = "directory" | "shortcut" | "background" | "captureNavigation" | "export" | "restore" | null;
+type BusyAction = "directory" | "shortcut" | "background" | "captureNavigation" | "captureHiding" | "export" | "restore" | null;
 type SettingsView = "settings" | "about";
 
 function formatDate(value: string | null): string {
@@ -202,6 +202,22 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
     }
   };
 
+  const toggleHideBeforeCapture = async () => {
+    if (busy) return;
+    setBusy("captureHiding");
+    setError(null);
+    setMessage(null);
+    try {
+      const next = await settingsApi.setHideBeforeCapture(!settings.hideBeforeCapture);
+      onSettingsChange(next);
+      setMessage(next.hideBeforeCapture ? "截图前将自动隐藏应用" : "截图前将保留应用窗口");
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : "无法修改截图隐藏设置");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportBackup = async () => {
     setError(null);
     setMessage(null);
@@ -301,6 +317,18 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
                 </button>
               </div>
               <small className="setting-help">默认开启。隐藏后可左键点击系统托盘图标重新打开，或从托盘菜单彻底退出。</small>
+            </div>
+            <div className="settings-card">
+              <div className="setting-row">
+                <div><strong>截图时隐藏应用</strong><p>截图前自动隐藏当前界面，保留未保存的编辑内容</p></div>
+                <button type="button" role="switch" aria-label="截图时隐藏应用" aria-checked={settings.hideBeforeCapture}
+                  className={settings.hideBeforeCapture ? "settings-switch active" : "settings-switch"}
+                  onClick={() => void toggleHideBeforeCapture()} disabled={Boolean(busy)}>
+                  <span className="settings-switch-track"><i /></span>
+                  <strong>{settings.hideBeforeCapture ? "已开启" : "已关闭"}</strong>
+                </button>
+              </div>
+              <small className="setting-help">默认开启。取消或失败时恢复原窗口状态；截图成功后按下方跳转设置处理。</small>
             </div>
             <div className="settings-card">
               <div className="setting-row capture-navigation-setting-row">

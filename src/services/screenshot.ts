@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface CaptureSession {
+  captureId: number;
   imagePath: string;
   width: number;
   height: number;
@@ -29,8 +30,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const screenshotApi = {
   getSession: () => call<CaptureSession>("get_capture_session"),
-  showOverlay: () => call<void>("show_capture_overlay"),
-  complete: (selection: CaptureSelection) => call<string>("complete_capture", { selection }),
-  cancel: () => call<void>("cancel_capture"),
+  showOverlay: (captureId: number) => call<void>("show_capture_overlay", { captureId }),
+  complete: (captureId: number, selection: CaptureSelection) => call<string>("complete_capture", { captureId, selection }),
+  cancel: (captureId: number) => call<void>("cancel_capture", { captureId }),
   discardTempImages: (paths: string[]) => call<void>("discard_temp_images", { paths }),
 };

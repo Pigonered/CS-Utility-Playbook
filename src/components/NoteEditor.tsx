@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { pickImageFiles } from "../services/images";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { importClipboardImage, pickImageFiles } from "../services/images";
+import { screenshotApi } from "../services/screenshot";
 import {
   GRENADE_TYPES,
   GRENADE_TYPE_LABELS,
@@ -151,6 +152,10 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RequiredField, string>>>({});
   const [imageError, setImageError] = useState<string | null>(null);
   const [isPickingImages, setIsPickingImages] = useState(false);
+  const [isImportingClipboard, setIsImportingClipboard] = useState(false);
+  const importBusyRef = useRef(false);
+  const mountedRef = useRef(false);
+  const clipboardPathsRef = useRef(new Set<string>());
   const titleRef = useRef<HTMLInputElement>(null);
   const imageListEndRef = useRef<HTMLDivElement>(null);
   const pendingImageId = useRef(0);
@@ -168,6 +173,16 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   }, [availableTags, commonTags]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const paths = [...clipboardPathsRef.current];
+      clipboardPathsRef.current.clear();
+      if (paths.length > 0) void screenshotApi.discardTempImages(paths).catch(() => undefined);
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(COMMON_TAGS_STORAGE_KEY, JSON.stringify(commonTags));
     } catch {
@@ -176,7 +191,10 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   }, [commonTags]);
 
   useEffect(() => {
-    titleRef.current?.focus();
+    titleRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSaving) onClose();
     };
@@ -198,9 +216,15 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
         imageType: suggestedCaptureType(current.length + index),
       })),
     ]);
-    window.setTimeout(() => {
+    const scrollTimer = window.setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement
+        || activeElement instanceof HTMLSelectElement
+        || (activeElement instanceof HTMLElement && activeElement.isContentEditable)) return;
       imageListEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, 0);
+    return () => window.clearTimeout(scrollTimer);
   }, [capturedImagePaths]);
 
   const setField = <K extends keyof FormState>(field: K, value: FormState[K]) => {
@@ -212,6 +236,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSaving || isPickingImages || importBusyRef.current) return;
     const nextErrors: Partial<Record<RequiredField, string>> = {};
     (Object.keys(fieldLabels) as RequiredField[]).forEach((field) => {
       if (!form[field].trim()) nextErrors[field] = `请选择或填写${fieldLabels[field]}`;
@@ -241,7 +266,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       startPosition: form.startPosition.trim(),
       targetPosition: form.targetPosition.trim(),
       throwType: form.throwType,
-      description: form.description.trim(),
+      description: form.description.replace(/\r\n?/g, "\n"),
       tags: submittedTags,
     };
     const imageItems: NoteImageInput[] = images.map((image) => (
@@ -341,6 +366,40 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
     } finally {
       setIsPickingImages(false);
     }
+  };
+
+  const handleImportClipboard = async () => {
+    if (isSaving || isPickingImages || importBusyRef.current) return;
+    importBusyRef.current = true;
+    setIsImportingClipboard(true);
+    setImageError(null);
+    try {
+      const imported = await importClipboardImage();
+      if (!mountedRef.current) {
+        await screenshotApi.discardTempImages([imported.path]);
+        return;
+      }
+      clipboardPathsRef.current.add(imported.path);
+      setImages((current) => [...current, {
+        key: `clipboard-${pendingImageId.current++}`,
+        sourcePath: imported.path,
+        previewPath: imported.path,
+        displayName: `剪贴板图片 ${clipboardPathsRef.current.size}（${imported.width} × ${imported.height}）`,
+        imageType: suggestedCaptureType(current.length),
+      }]);
+    } catch (clipboardError) {
+      if (mountedRef.current) setImageError(clipboardError instanceof Error ? clipboardError.message : "无法读取剪贴板图片");
+    } finally {
+      importBusyRef.current = false;
+      if (mountedRef.current) setIsImportingClipboard(false);
+    }
+  };
+
+  const handleImagePaste = (event: ClipboardEvent<HTMLElement>) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]")) return;
+    event.preventDefault();
+    void handleImportClipboard();
   };
 
   const moveImage = (index: number, offset: -1 | 1) => {
@@ -540,7 +599,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
               </div>
             </section>
 
-            <section className="form-section image-form-section">
+            <section className="form-section image-form-section" tabIndex={0} onPaste={handleImagePaste} aria-label="笔记图片，可按 Ctrl+V 添加剪贴板图片">
               <div className="form-section-title"><span>05</span><strong>图片</strong><small>{images.length} 张</small></div>
               <div className="continuous-capture-tip">
                 {screenshotShortcut ? screenshotShortcut.split("+").map((key, index) => (
@@ -550,16 +609,23 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                 )) : <span className="shortcut-unbound">未绑定</span>}
                 <p>{screenshotShortcut ? "编辑期间可连续截图，新图片会自动追加到当前笔记" : "可在设置中绑定截图快捷键"}</p>
               </div>
-              <button
-                type="button"
-                className="add-images-button"
-                onClick={() => void handleAddImages()}
-                disabled={isSaving || isPickingImages}
-              >
-                <PlusIcon />
-                <span>{isPickingImages ? "正在打开选择器…" : "添加图片"}</span>
-                <small>PNG / JPG / JPEG / WEBP，可多选</small>
-              </button>
+              <div className="image-import-actions">
+                <button
+                  type="button"
+                  className="add-images-button"
+                  onClick={() => void handleAddImages()}
+                  disabled={isSaving || isPickingImages || isImportingClipboard}
+                >
+                  <PlusIcon />
+                  <span>{isPickingImages ? "正在打开选择器…" : "添加图片"}</span>
+                  <small>PNG / JPG / JPEG / WEBP，可多选</small>
+                </button>
+                <button type="button" className="add-images-button" onClick={() => void handleImportClipboard()} disabled={isSaving || isPickingImages || isImportingClipboard}>
+                  <ImageIcon />
+                  <span>{isImportingClipboard ? "正在读取剪贴板…" : "从剪贴板添加"}</span>
+                  <small>微信 / QQ 截图后复制，在此按 Ctrl+V</small>
+                </button>
+              </div>
 
               {imageError && <div className="form-submit-error" role="alert">{imageError}</div>}
 
@@ -604,7 +670,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
             <span>{mode === "edit" ? "保存后详情会立即更新" : "保存后将自动选中新笔记"}</span>
             <div>
               <button type="button" className="secondary-button" onClick={onClose} disabled={isSaving || isPickingImages}>取消</button>
-              <button type="submit" className="primary-button editor-save" disabled={isSaving}>
+              <button type="submit" className="primary-button editor-save" disabled={isSaving || isPickingImages || isImportingClipboard}>
                 {isSaving && <span className="button-spinner" />}
                 {isSaving ? "正在保存" : "保存笔记"}
               </button>

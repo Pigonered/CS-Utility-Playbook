@@ -1,4 +1,5 @@
 mod backup;
+mod clipboard;
 mod database;
 mod image_store;
 mod screenshot;
@@ -103,6 +104,7 @@ pub fn run() {
             show_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -111,9 +113,10 @@ pub fn run() {
                             // Unregistering the temporary Esc shortcuts takes the
                             // same plugin lock held by this callback, so defer it
                             // until after the callback returns.
+                            let capture_id = screenshot::active_capture_id(app);
                             let app = app.clone();
                             std::thread::spawn(move || {
-                                screenshot::cancel_active_capture(&app);
+                                screenshot::cancel_active_capture(&app, capture_id);
                             });
                         } else {
                             screenshot::begin_capture(app.clone());
@@ -207,10 +210,12 @@ pub fn run() {
             screenshot::complete_capture,
             screenshot::cancel_capture,
             screenshot::discard_temp_images,
+            clipboard::import_clipboard_image,
             settings::get_settings,
             settings::set_screenshot_shortcut,
             settings::set_close_to_tray,
             settings::set_open_note_after_capture,
+            settings::set_hide_before_capture,
             settings::change_data_directory,
         ])
         .run(tauri::generate_context!())
