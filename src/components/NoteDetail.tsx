@@ -14,8 +14,8 @@ interface NoteDetailProps {
   onAnnotate: (image: NoteImage) => void;
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
-  return <div className="detail-field"><span>{label}</span><strong>{value || "—"}</strong></div>;
+function DetailField({ label, value, wrap = false }: { label: string; value: string; wrap?: boolean }) {
+  return <div className={`detail-field${wrap ? " detail-field-wrap" : ""}`}><span>{label}</span><strong>{value || "—"}</strong></div>;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -131,7 +131,7 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
           <DetailField label="地图" value={note.mapName} />
           <DetailField label="阵营" value={note.side} />
           <DetailField label="道具类型" value={grenadeTypeLabel(note.grenadeType)} />
-          <DetailField label="投掷方式" value={throwTypeLabel(note.throwType)} />
+          <DetailField label="投掷方式" value={throwTypeLabel(note.throwType)} wrap />
           <DetailField label="起点" value={note.startPosition} />
           <DetailField label="落点" value={note.targetPosition} />
         </section>

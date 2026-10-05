@@ -153,6 +153,7 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .detail-field:nth-child(3n) { border-right: 0; }.detail-field:nth-child(n+4) { border-bottom: 0; }
 .detail-field span { color: var(--subtle); font-size: 9px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
 .detail-field strong { overflow: hidden; color: #cdd3dc; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.detail-field-wrap strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.7; }
 .content-section { margin-top: 23px; }
 .content-heading { height: 27px; display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--border); }
 .content-heading > span { color: #aeb6c2; font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
@@ -224,6 +225,32 @@ kbd, .shortcut-key { color: var(--muted); background: var(--surface-3); border: 
 .form-field.has-error input, .form-field.has-error select { border-color: rgba(228,109,114,.75); }
 .field-error { position: absolute; right: 0; top: 0; color: #df7d82; font-size: 9px; }
 .character-count { justify-self: end; margin-top: -3px; color: var(--subtle); font-size: 9px; }
+.throw-method-picker { display: grid; gap: 12px; margin-bottom: 20px; padding: 14px; background: #12151a; border: 1px solid #303641; }
+.throw-method-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.throw-method-heading strong { color: #c9d0d9; font-size: 11px; }
+.throw-method-heading .text-button { padding: 3px 0 3px 8px; color: var(--subtle); background: none; border: 0; font-size: 10px; cursor: pointer; }
+.throw-method-heading .text-button:hover { color: var(--accent); }
+.throw-method-heading .text-button:disabled { opacity: .55; cursor: wait; }
+.throw-method-help { margin: -4px 0 0; color: var(--subtle); font-size: 10px; line-height: 1.6; }
+.throw-module { min-width: 0; margin: 0; padding: 0; border: 0; }
+.throw-module-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.throw-direction-region { display: grid; gap: 10px; padding: 12px; border: 1px solid #303641; background: #171a20; }
+.throw-module legend { margin-bottom: 7px; padding: 0; color: #929caa; font-size: 10px; }
+.throw-module-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.throw-choice { position: relative; min-width: 58px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; color: #919caa; background: #1b1f26; border: 1px solid #39414d; font-size: 11px; cursor: pointer; }
+.throw-choice input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
+.throw-choice:hover { color: #dce1e8; border-color: #80633e; }
+.throw-choice.selected { color: #efcf9e; background: rgba(223,155,66,.1); border-color: #926f40; }
+.throw-choice:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.throw-module:disabled .throw-choice { opacity: .55; cursor: wait; }
+.throw-method-preview { display: grid; gap: 9px; padding: 12px; background: rgba(223,155,66,.04); border: 1px solid rgba(223,155,66,.25); }
+.throw-method-preview > span { color: #b39161; font-size: 9px; }
+.throw-method-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.throw-method-part { display: inline-flex; align-items: center; gap: 7px; color: #edc98f; font-size: 11px; line-height: 1.7; }
+.throw-method-part + .throw-method-part::before { content: "+"; color: #7c684c; }
+.throw-method-legacy { min-width: 0; display: grid; justify-items: start; gap: 9px; }
+.throw-method-legacy p { max-width: 100%; margin: 0; color: #c9d0d9; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }
+.throw-method-legacy small { color: var(--subtle); font-size: 9px; line-height: 1.6; }
 .tag-editor { display: grid; gap: 9px; margin-bottom: 15px; }
 .tag-input-shell { min-height: 42px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 8px; background: #101318; border: 1px solid #303641; }
 .tag-input-shell:focus-within { border-color: #81643d; box-shadow: 0 0 0 1px rgba(223,155,66,.12); }

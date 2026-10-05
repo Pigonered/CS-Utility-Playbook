@@ -6,8 +6,6 @@ import {
   GRENADE_TYPE_LABELS,
   IMAGE_TYPES,
   SIDES,
-  THROW_TYPES,
-  THROW_TYPE_LABELS,
   type GrenadeType,
   type ImageType,
   type MapName,
@@ -18,6 +16,8 @@ import {
   type Tag,
 } from "../types/note";
 import { CloseIcon, ImageIcon, PlusIcon, TrashIcon } from "./icons";
+import { DEFAULT_THROW_METHOD, formatThrowMethod } from "../types/throwMethod";
+import { ThrowMethodPicker } from "./ThrowMethodPicker";
 
 const DEFAULT_COMMON_TAGS = ["默认道具", "进攻", "防守", "残局", "必学"] as const;
 const COMMON_TAGS_STORAGE_KEY = "cs-notes.common-tags";
@@ -34,8 +34,7 @@ interface FormState {
   grenadeType: GrenadeType | "";
   startPosition: string;
   targetPosition: string;
-  throwPreset: string;
-  customThrowType: string;
+  throwType: string;
   description: string;
 }
 
@@ -120,7 +119,6 @@ function createInitialImages(note: Note | null, capturedImagePaths: string[]): E
 }
 
 function createInitialState(note: Note | null): FormState {
-  const knownThrowType = note && THROW_TYPES.some((type) => type === note.throwType);
   return {
     title: note?.title ?? "",
     mapName: note?.mapName ?? "",
@@ -128,8 +126,7 @@ function createInitialState(note: Note | null): FormState {
     grenadeType: note?.grenadeType ?? "",
     startPosition: note?.startPosition ?? "",
     targetPosition: note?.targetPosition ?? "",
-    throwPreset: knownThrowType ? note.throwType : note?.throwType ? "custom" : "",
-    customThrowType: knownThrowType ? "" : note?.throwType ?? "",
+    throwType: note?.throwType ?? formatThrowMethod(DEFAULT_THROW_METHOD),
     description: note?.description ?? "",
   };
 }
@@ -236,7 +233,6 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       return;
     }
 
-    const throwType = form.throwPreset === "custom" ? form.customThrowType.trim() : form.throwPreset;
     const input: NoteInput = {
       title: form.title.trim(),
       mapName: form.mapName as MapName,
@@ -244,7 +240,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       grenadeType: form.grenadeType as GrenadeType,
       startPosition: form.startPosition.trim(),
       targetPosition: form.targetPosition.trim(),
-      throwType,
+      throwType: form.throwType,
       description: form.description.trim(),
       tags: submittedTags,
     };
@@ -445,22 +441,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                 </label>
               </div>
 
-              <div className={form.throwPreset === "custom" ? "form-grid two-columns" : "form-grid"}>
-                <label className="form-field">
-                  <span>投掷方式</span>
-                  <select value={form.throwPreset} onChange={(event) => setField("throwPreset", event.target.value)} disabled={isSaving}>
-                    <option value="">未设置</option>
-                    {THROW_TYPES.map((type) => <option key={type} value={type}>{THROW_TYPE_LABELS[type]}</option>)}
-                    <option value="custom">自定义…</option>
-                  </select>
-                </label>
-                {form.throwPreset === "custom" && (
-                  <label className="form-field">
-                    <span>自定义方式</span>
-                    <input value={form.customThrowType} onChange={(event) => setField("customThrowType", event.target.value)} placeholder="输入投掷方式" maxLength={80} disabled={isSaving} />
-                  </label>
-                )}
-              </div>
+              <ThrowMethodPicker value={form.throwType} disabled={isSaving} onChange={(value) => setField("throwType", value)} />
             </section>
 
             <section className="form-section">
