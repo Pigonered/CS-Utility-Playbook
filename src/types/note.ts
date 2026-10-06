@@ -56,6 +56,7 @@ export interface NoteImage {
   annotatedPath: string | null;
   annotationData: string | null;
   imageType: ImageType;
+  displayName: string;
   sortOrder: number;
   createdAt: string;
 }
@@ -64,11 +65,14 @@ export interface NoteImageInput {
   existingId?: number;
   sourcePath?: string;
   imageType: ImageType;
+  displayName: string;
 }
 
 export interface Tag {
   id: number;
   name: string;
+  favoriteOrder: number | null;
+  usageCount: number;
 }
 
 export interface Note {

@@ -30,7 +30,7 @@ function formatUpdatedAt(value: string): string {
 }
 
 export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelete, onTagSelect, onAnnotate }: NoteDetailProps) {
-  const [viewerImage, setViewerImage] = useState<string | null>(null);
+  const [viewerImage, setViewerImage] = useState<{ path: string; name: string } | null>(null);
   const [viewerScale, setViewerScale] = useState(1);
   const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
 
@@ -39,9 +39,9 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
     setViewerOffset({ x: 0, y: 0 });
   };
 
-  const openViewer = (path: string) => {
+  const openViewer = (path: string, name: string) => {
     resetViewerTransform();
-    setViewerImage(path);
+    setViewerImage({ path, name });
   };
 
   const closeViewer = () => {
@@ -145,15 +145,15 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
                   <button
                     type="button"
                     className="note-image-preview"
-                    onClick={() => openViewer(image.annotatedPath ?? image.imagePath)}
+                    onClick={() => openViewer(image.annotatedPath ?? image.imagePath, image.displayName || `图片 ${index + 1} · ${image.imageType}`)}
                     title="点击查看大图"
                   >
-                    <img src={convertFileSrc(image.annotatedPath ?? image.imagePath)} alt={`${note.title} ${image.imageType}图 ${index + 1}`} />
+                    <img src={convertFileSrc(image.annotatedPath ?? image.imagePath)} alt={image.displayName || `${note.title} ${image.imageType}图 ${index + 1}`} />
                   </button>
                   <footer>
-                    <span><ImageIcon />图片 {index + 1}：{image.imageType}{image.annotatedPath && <i>已标注</i>}</span>
+                    <span title={image.displayName || `图片 ${index + 1} · ${image.imageType}`}><ImageIcon /><strong className="note-image-name">{image.displayName || `图片 ${index + 1}`}</strong><small>{image.imageType}</small>{image.annotatedPath && <i>已标注</i>}</span>
                     <div>
-                      <button type="button" onClick={() => openViewer(image.annotatedPath ?? image.imagePath)}>查看</button>
+                      <button type="button" onClick={() => openViewer(image.annotatedPath ?? image.imagePath, image.displayName || `图片 ${index + 1} · ${image.imageType}`)}>查看</button>
                       <button type="button" className="annotate-button" onClick={() => onAnnotate(image)}>编辑图片</button>
                     </div>
                   </footer>
@@ -192,9 +192,10 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
           }}
         >
           <button type="button" onClick={closeViewer} aria-label="关闭大图"><CloseIcon /></button>
+          <div className="image-viewer-name">{viewerImage.name}</div>
           <img
-            src={convertFileSrc(viewerImage)}
-            alt="笔记大图预览"
+            src={convertFileSrc(viewerImage.path)}
+            alt={viewerImage.name}
             draggable={false}
             style={{ transform: `translate(${viewerOffset.x}px, ${viewerOffset.y}px) scale(${viewerScale})` }}
           />

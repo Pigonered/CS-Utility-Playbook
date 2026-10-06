@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Note, NoteImageInput, NoteInput, Tag } from "../types/note";
+import { loadLegacyCommonTags } from "../types/tags";
 
 function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
@@ -27,6 +28,8 @@ export const notesApi = {
   saveImageAnnotation: (imageId: number, pngData: string | null, annotationData: string | null) => (
     invokeDatabase<Note>("save_image_annotation", { imageId, pngData, annotationData })
   ),
-  getTags: () => invokeDatabase<Tag[]>("get_tags"),
+  getTags: () => invokeDatabase<Tag[]>("initialize_tag_library", { commonTags: loadLegacyCommonTags() }),
   createTag: (name: string) => invokeDatabase<Tag>("create_tag", { name }),
+  setTagFavorite: (name: string, favorite: boolean) => invokeDatabase<Tag[]>("set_tag_favorite", { name, favorite }),
+  deleteUnusedTag: (id: number) => invokeDatabase<Tag[]>("delete_unused_tag", { id }),
 };

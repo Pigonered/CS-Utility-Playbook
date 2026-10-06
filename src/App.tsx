@@ -391,13 +391,12 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCreateNote={openCreateEditor}
-        onOpenAbout={() => openSettingsManager("about")}
         onOpenSettings={() => openSettingsManager("settings")}
       />
       <div className="workspace">
         <Sidebar
           filters={filters}
-          tags={availableTags}
+          tags={availableTags.filter((tag) => tag.usageCount > 0)}
           maps={mapOptions}
           hiddenMaps={mapPreferences.hidden}
           screenshotShortcut={appSettings.screenshotShortcut}
@@ -432,6 +431,7 @@ function App() {
           maps={mapOptions}
           capturedImagePaths={editor.temporaryImagePaths}
           availableTags={availableTags}
+          onTagsChange={setAvailableTags}
           screenshotShortcut={appSettings.screenshotShortcut}
           isSaving={isSaving}
           error={editorError}

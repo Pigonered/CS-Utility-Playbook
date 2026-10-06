@@ -662,6 +662,7 @@ pub fn get_backup_status(service: State<'_, BackupService>) -> BackupResultValue
 mod tests {
     use super::*;
     use crate::database::{NoteImageInput, NoteInput};
+    use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_directory() -> PathBuf {
@@ -704,13 +705,30 @@ mod tests {
                 None,
                 sample_input(),
                 vec![NoteImageInput {
+                    display_name: "备份后的站位名称".to_string(),
                     existing_id: None,
                     source_path: Some(source.to_string_lossy().into_owned()),
                     image_type: "站位".to_string(),
                 }],
             )
             .expect("note should save");
+        database
+            .initialize_tag_library(&["容错率：4/5".into(), "实用性：5/5".into()])
+            .unwrap();
+        database.create_tag("未使用的历史标签").unwrap();
         let stored_image = note.images[0].image_path.clone();
+        let editable_data = r##"[{"id":"text-stable-id","tool":"text","point":{"x":0.2,"y":0.3},"text":"第一行\n第二行","color":"#ffffff","fontSize":32,"textBaseline":"top"}]"##;
+        let annotation_png = format!(
+            "data:image/png;base64,{}",
+            BASE64_STANDARD.encode(fs::read(&source).unwrap())
+        );
+        database
+            .save_image_annotation(
+                note.images[0].id,
+                Some(&annotation_png),
+                Some(editable_data),
+            )
+            .unwrap();
 
         let service = BackupService::new(directory.clone());
         let archive_path = directory.join("manual-backup.zip");
@@ -722,6 +740,8 @@ mod tests {
 
         database.delete_note(note.id).expect("note should delete");
         assert!(!Path::new(&stored_image).exists());
+        database.set_tag_favorite("容错率：4/5", false).unwrap();
+        database.set_tag_favorite("不应保留的新偏好", true).unwrap();
         let restored = service
             .restore_backup(&archive_path)
             .expect("backup should restore");
@@ -730,6 +750,23 @@ mod tests {
         assert_eq!(restored_notes.len(), 1);
         assert!(Path::new(&restored_notes[0].images[0].image_path).is_file());
 
+        assert_eq!(restored_notes[0].images[0].display_name, "备份后的站位名称");
+        assert_eq!(
+            restored_notes[0].images[0].annotation_data.as_deref(),
+            Some(editable_data)
+        );
+        assert!(Path::new(restored_notes[0].images[0].annotated_path.as_ref().unwrap()).is_file());
+        let tags = database
+            .initialize_tag_library(&["本地旧偏好不应覆盖备份".into()])
+            .unwrap();
+        let favorites: Vec<_> = tags
+            .iter()
+            .filter(|tag| tag.favorite_order.is_some())
+            .map(|tag| tag.name.as_str())
+            .collect();
+        assert_eq!(favorites, ["容错率：4/5", "实用性：5/5"]);
+        assert!(tags.iter().any(|tag| tag.name == "未使用的历史标签"));
+        assert!(!tags.iter().any(|tag| tag.name == "不应保留的新偏好"));
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
@@ -776,6 +813,7 @@ mod tests {
                 None,
                 sample_input(),
                 vec![NoteImageInput {
+                    display_name: "迁移站位".to_string(),
                     existing_id: None,
                     source_path: Some(source_image.to_string_lossy().into_owned()),
                     image_type: "站位".to_string(),
@@ -783,6 +821,9 @@ mod tests {
             )
             .expect("note should save");
 
+        database
+            .initialize_tag_library(&["常用偏好".into()])
+            .unwrap();
         BackupService::new(source_directory.clone())
             .migrate_to_directory(&destination_directory)
             .expect("data should migrate");
@@ -795,6 +836,12 @@ mod tests {
             .get_notes()
             .expect("migrated notes should load");
         assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].images[0].display_name, "迁移站位");
+        assert!(migrated_database
+            .initialize_tag_library(&["不覆盖迁移偏好".into()])
+            .unwrap()
+            .iter()
+            .any(|tag| tag.name == "常用偏好" && tag.favorite_order == Some(0)));
         assert!(Path::new(&notes[0].images[0].image_path).is_file());
         assert!(source_directory.join("notebook.db").is_file());
 

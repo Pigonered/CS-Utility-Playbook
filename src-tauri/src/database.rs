@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS note_images (
     note_id    INTEGER NOT NULL,
     image_path TEXT NOT NULL,
     image_type TEXT NOT NULL DEFAULT '其他',
+    display_name TEXT NOT NULL DEFAULT '',
     annotated_path TEXT,
     annotation_data TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -47,7 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_note_images_note_id
 
 CREATE TABLE IF NOT EXISTS tags (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (trim(name) <> '')
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (trim(name) <> ''),
+    favorite_order INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS app_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS note_tags (
@@ -92,6 +99,7 @@ pub struct NoteImage {
     pub note_id: i64,
     pub image_path: String,
     pub image_type: String,
+    pub display_name: String,
     pub annotated_path: Option<String>,
     pub annotation_data: Option<String>,
     pub sort_order: i64,
@@ -99,9 +107,12 @@ pub struct NoteImage {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub id: i64,
     pub name: String,
+    pub favorite_order: Option<i64>,
+    pub usage_count: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +141,8 @@ pub struct NoteImageInput {
     pub source_path: Option<String>,
     #[serde(default = "default_image_type")]
     pub image_type: String,
+    #[serde(default)]
+    pub display_name: String,
 }
 
 #[derive(Debug)]
@@ -137,10 +150,12 @@ enum PlannedImage {
     Existing {
         id: i64,
         image_type: String,
+        display_name: String,
     },
     New {
         copied: CopiedImage,
         image_type: String,
+        display_name: String,
     },
 }
 
@@ -169,7 +184,7 @@ impl Database {
             .map_err(|error| format!("无法初始化数据库：{error}"))?;
         ensure_image_type_column(&connection)?;
         ensure_annotation_columns(&connection)?;
-        cleanup_orphan_tags(&connection)?;
+        ensure_tag_library_columns(&connection)?;
         Ok(())
     }
 
@@ -318,17 +333,36 @@ impl Database {
 
         let mut planned_images = Vec::with_capacity(image_items.len());
         for item in image_items {
-            let image_type = normalize_image_type(&item.image_type)?;
+            let values = (|| -> DbResult<(String, String)> {
+                let image_type = normalize_image_type(&item.image_type)?;
+                let display_name = item.display_name.trim().to_string();
+                if display_name.chars().count() > 80 {
+                    return Err("图片名称最多 80 个字符".to_string());
+                }
+                Ok((image_type, display_name))
+            })();
+            let (image_type, display_name) = match values {
+                Ok(values) => values,
+                Err(error) => {
+                    cleanup_copied_images(&self.image_store, &planned_images);
+                    return Err(error);
+                }
+            };
             match (item.existing_id, item.source_path) {
                 (Some(existing_id), None) => {
                     planned_images.push(PlannedImage::Existing {
                         id: existing_id,
                         image_type,
+                        display_name,
                     });
                 }
                 (None, Some(source_path)) if !source_path.trim().is_empty() => {
                     match self.image_store.copy_source(Path::new(&source_path)) {
-                        Ok(copied) => planned_images.push(PlannedImage::New { copied, image_type }),
+                        Ok(copied) => planned_images.push(PlannedImage::New {
+                            copied,
+                            image_type,
+                            display_name,
+                        }),
                         Err(error) => {
                             cleanup_copied_images(&self.image_store, &planned_images);
                             return Err(error);
@@ -443,21 +477,29 @@ impl Database {
 
             for (sort_order, planned) in planned_images.iter().enumerate() {
                 match planned {
-                    PlannedImage::Existing { id, image_type } => {
+                    PlannedImage::Existing {
+                        id,
+                        image_type,
+                        display_name,
+                    } => {
                         transaction
                             .execute(
-                                "UPDATE note_images SET sort_order = ?1, image_type = ?2
-                                 WHERE id = ?3 AND note_id = ?4",
-                                params![sort_order as i64, image_type, id, note_id],
+                                "UPDATE note_images SET sort_order = ?1, image_type = ?2, display_name = ?3
+                                 WHERE id = ?4 AND note_id = ?5",
+                                params![sort_order as i64, image_type, display_name, id, note_id],
                             )
                             .map_err(database_error)?;
                     }
-                    PlannedImage::New { copied, image_type } => {
+                    PlannedImage::New {
+                        copied,
+                        image_type,
+                        display_name,
+                    } => {
                         transaction
                             .execute(
-                                "INSERT INTO note_images (note_id, image_path, image_type, sort_order)
-                                 VALUES (?1, ?2, ?3, ?4)",
-                                params![note_id, copied.stored_path, image_type, sort_order as i64],
+                                "INSERT INTO note_images (note_id, image_path, image_type, sort_order, display_name)
+                                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                                params![note_id, copied.stored_path, image_type, sort_order as i64, display_name],
                             )
                             .map_err(database_error)?;
                     }
@@ -513,7 +555,6 @@ impl Database {
         if changed == 0 {
             return Err("要删除的笔记不存在".to_string());
         }
-        cleanup_orphan_tags(&transaction)?;
         transaction.commit().map_err(database_error)?;
         for stored_path in image_paths {
             self.image_store.remove_best_effort(&stored_path);
@@ -602,51 +643,129 @@ impl Database {
 
     pub fn get_tags(&self) -> DbResult<Vec<Tag>> {
         let connection = self.open()?;
-        let mut statement = connection
-            .prepare("SELECT id, name FROM tags ORDER BY name COLLATE NOCASE")
+        load_tags(&connection)
+    }
+
+    // 旧版常用标签只迁移一次；备份中的标记随数据库一起恢复。
+    pub fn initialize_tag_library(&self, common_tags: &[String]) -> DbResult<Vec<Tag>> {
+        let mut connection = self.open()?;
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(database_error)?;
-        let tags = statement
-            .query_map([], |row| {
-                Ok(Tag {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                })
-            })
-            .map_err(database_error)?
-            .collect::<Result<Vec<_>, _>>()
+        let migrated: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM app_metadata WHERE key = 'tag_library_migrated')",
+                [],
+                |row| row.get(0),
+            )
             .map_err(database_error)?;
-        Ok(tags)
+        if !migrated {
+            let mut names = HashSet::new();
+            let mut order = 0;
+            for raw in common_tags {
+                let Ok(name) = validate_tag_name(raw) else {
+                    continue;
+                };
+                if !names.insert(name.to_lowercase()) {
+                    continue;
+                }
+                if order >= 20 {
+                    break;
+                }
+                transaction
+                    .execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [&name])
+                    .map_err(database_error)?;
+                transaction
+                    .execute(
+                        "UPDATE tags SET favorite_order = ?1 WHERE name = ?2 COLLATE NOCASE",
+                        params![order, name],
+                    )
+                    .map_err(database_error)?;
+                order += 1;
+            }
+            transaction
+                .execute(
+                    "INSERT INTO app_metadata (key, value) VALUES ('tag_library_migrated', '1')",
+                    [],
+                )
+                .map_err(database_error)?;
+        }
+        transaction.commit().map_err(database_error)?;
+        load_tags(&connection)
     }
 
     pub fn create_tag(&self, name: &str) -> DbResult<Tag> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err("标签名称不能为空".to_string());
-        }
-
+        let name = validate_tag_name(name)?;
         let connection = self.open()?;
         connection
-            .execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [name])
+            .execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [&name])
             .map_err(database_error)?;
-        connection
-            .query_row(
-                "SELECT id, name FROM tags WHERE name = ?1 COLLATE NOCASE",
-                [name],
-                |row| {
-                    Ok(Tag {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                    })
-                },
-            )
-            .map_err(database_error)
+        load_tags(&connection)?
+            .into_iter()
+            .find(|tag| tag.name.to_lowercase() == name.to_lowercase())
+            .ok_or_else(|| "创建标签后无法读取标签".to_string())
+    }
+
+    pub fn set_tag_favorite(&self, name: &str, favorite: bool) -> DbResult<Vec<Tag>> {
+        let name = validate_tag_name(name)?;
+        let mut connection = self.open()?;
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(database_error)?;
+        if favorite {
+            let current: Option<Option<i64>> = transaction
+                .query_row(
+                    "SELECT favorite_order FROM tags WHERE name = ?1 COLLATE NOCASE",
+                    [&name],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(database_error)?;
+            if current.flatten().is_none() {
+                let count: i64 = transaction
+                    .query_row(
+                        "SELECT COUNT(*) FROM tags WHERE favorite_order IS NOT NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(database_error)?;
+                if count >= 20 {
+                    return Err("常用标签最多设置 20 个".to_string());
+                }
+                transaction
+                    .execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [&name])
+                    .map_err(database_error)?;
+                transaction.execute("UPDATE tags SET favorite_order = (SELECT COALESCE(MAX(favorite_order), -1) + 1 FROM tags) WHERE name = ?1 COLLATE NOCASE", [&name])
+                    .map_err(database_error)?;
+            }
+        } else {
+            transaction
+                .execute(
+                    "UPDATE tags SET favorite_order = NULL WHERE name = ?1 COLLATE NOCASE",
+                    [&name],
+                )
+                .map_err(database_error)?;
+        }
+        transaction.commit().map_err(database_error)?;
+        load_tags(&connection)
+    }
+
+    pub fn delete_unused_tag(&self, id: i64) -> DbResult<Vec<Tag>> {
+        let connection = self.open()?;
+        let changed = connection.execute(
+            "DELETE FROM tags WHERE id = ?1 AND NOT EXISTS(SELECT 1 FROM note_tags WHERE tag_id = ?1)", [id]
+        ).map_err(database_error)?;
+        if changed == 0 {
+            return Err("标签已被笔记使用或不存在，请先从笔记移除该标签".to_string());
+        }
+        load_tags(&connection)
     }
 
     fn load_relations(&self, connection: &Connection, note: &mut Note) -> DbResult<()> {
         let mut image_statement = connection
             .prepare(
                 "SELECT id, note_id, image_path, image_type, annotated_path,
-                        annotation_data, sort_order, created_at
+                        annotation_data, sort_order, created_at, display_name
                  FROM note_images WHERE note_id = ?1
                  ORDER BY sort_order, id",
             )
@@ -662,6 +781,7 @@ impl Database {
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, i64>(6)?,
                     row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
                 ))
             })
             .map_err(database_error)?
@@ -679,6 +799,7 @@ impl Database {
                     annotation_data,
                     sort_order,
                     created_at,
+                    display_name,
                 )| {
                     Ok(NoteImage {
                         id,
@@ -689,6 +810,7 @@ impl Database {
                             .to_string_lossy()
                             .into_owned(),
                         image_type,
+                        display_name,
                         annotated_path: annotated_path
                             .map(|path| self.image_store.absolute_path(&path))
                             .transpose()?
@@ -703,7 +825,8 @@ impl Database {
 
         let mut tag_statement = connection
             .prepare(
-                "SELECT tags.id, tags.name
+                "SELECT tags.id, tags.name, tags.favorite_order,
+                        (SELECT COUNT(*) FROM note_tags usage WHERE usage.tag_id = tags.id)
                  FROM tags
                  INNER JOIN note_tags ON note_tags.tag_id = tags.id
                  WHERE note_tags.note_id = ?1
@@ -711,12 +834,7 @@ impl Database {
             )
             .map_err(database_error)?;
         note.tags = tag_statement
-            .query_map([note.id], |row| {
-                Ok(Tag {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                })
-            })
+            .query_map([note.id], map_tag_row)
             .map_err(database_error)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(database_error)?;
@@ -883,20 +1001,63 @@ fn replace_note_tags(transaction: &Transaction<'_>, note_id: i64, tags: &[String
             )
             .map_err(database_error)?;
     }
-    cleanup_orphan_tags(transaction)?;
     Ok(())
 }
 
-fn cleanup_orphan_tags(connection: &Connection) -> DbResult<()> {
-    connection
-        .execute(
-            "DELETE FROM tags
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM note_tags WHERE note_tags.tag_id = tags.id
-             )",
-            [],
-        )
+fn map_tag_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Tag> {
+    Ok(Tag {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        favorite_order: row.get(2)?,
+        usage_count: row.get(3)?,
+    })
+}
+
+fn load_tags(connection: &Connection) -> DbResult<Vec<Tag>> {
+    let mut statement = connection.prepare(
+        "SELECT tags.id, tags.name, tags.favorite_order, COUNT(note_tags.note_id)
+         FROM tags LEFT JOIN note_tags ON note_tags.tag_id = tags.id
+         GROUP BY tags.id ORDER BY favorite_order IS NULL, favorite_order, tags.name COLLATE NOCASE"
+    ).map_err(database_error)?;
+    let rows = statement
+        .query_map([], map_tag_row)
         .map_err(database_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(database_error)
+}
+
+fn validate_tag_name(value: &str) -> DbResult<String> {
+    let name = value.trim().trim_start_matches('#').trim();
+    if name.is_empty() {
+        return Err("标签名称不能为空".to_string());
+    }
+    if name.chars().count() > 24 {
+        return Err("每个标签最多 24 个字符".to_string());
+    }
+    Ok(name.to_string())
+}
+
+fn ensure_tag_library_columns(connection: &Connection) -> DbResult<()> {
+    for (table, column, declaration) in [
+        ("note_images", "display_name", "TEXT NOT NULL DEFAULT ''"),
+        ("tags", "favorite_order", "INTEGER"),
+    ] {
+        let mut statement = connection
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(database_error)?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(database_error)?
+            .collect::<Result<HashSet<_>, _>>()
+            .map_err(database_error)?;
+        if !columns.contains(column) {
+            connection
+                .execute(
+                    &format!("ALTER TABLE {table} ADD COLUMN {column} {declaration}"),
+                    [],
+                )
+                .map_err(database_error)?;
+        }
+    }
     Ok(())
 }
 
@@ -957,6 +1118,28 @@ pub fn get_tags(database: State<'_, Database>) -> DbResult<Vec<Tag>> {
 #[tauri::command]
 pub fn create_tag(name: String, database: State<'_, Database>) -> DbResult<Tag> {
     database.create_tag(&name)
+}
+
+#[tauri::command]
+pub fn initialize_tag_library(
+    common_tags: Vec<String>,
+    database: State<'_, Database>,
+) -> DbResult<Vec<Tag>> {
+    database.initialize_tag_library(&common_tags)
+}
+
+#[tauri::command]
+pub fn set_tag_favorite(
+    name: String,
+    favorite: bool,
+    database: State<'_, Database>,
+) -> DbResult<Vec<Tag>> {
+    database.set_tag_favorite(&name, favorite)
+}
+
+#[tauri::command]
+pub fn delete_unused_tag(id: i64, database: State<'_, Database>) -> DbResult<Vec<Tag>> {
+    database.delete_unused_tag(id)
 }
 
 #[cfg(test)]
@@ -1157,7 +1340,7 @@ mod tests {
             .expect("tag count should load");
         assert_eq!(image_count, 0);
         assert_eq!(relation_count, 0);
-        assert_eq!(tag_count, 0);
+        assert_eq!(tag_count, 3);
         drop(connection);
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
@@ -1173,7 +1356,157 @@ mod tests {
     }
 
     #[test]
-    fn initialization_removes_legacy_orphan_tags() {
+    fn tag_library_migration_is_ordered_idempotent_and_preserves_empty_preferences() {
+        let (database, directory) = test_database();
+        database.create_tag("历史标签").unwrap();
+        let tags = database
+            .initialize_tag_library(&[
+                "实用性：5/5".into(),
+                "#Smoke".into(),
+                "smoke".into(),
+                "进攻".into(),
+            ])
+            .unwrap();
+        let favorites: Vec<_> = tags
+            .iter()
+            .filter(|tag| tag.favorite_order.is_some())
+            .map(|tag| tag.name.as_str())
+            .collect();
+        assert_eq!(favorites, ["实用性：5/5", "Smoke", "进攻"]);
+        assert_eq!(tags.len(), 4);
+        database
+            .initialize_tag_library(&["不应再次迁移".into()])
+            .unwrap();
+        assert_eq!(database.get_tags().unwrap().len(), 4);
+        for name in favorites {
+            database.set_tag_favorite(name, false).unwrap();
+        }
+        database.initialize().unwrap();
+        let reopened = Database::new(directory.join("notebook.db"));
+        assert!(reopened
+            .initialize_tag_library(&["旧偏好".into()])
+            .unwrap()
+            .iter()
+            .all(|tag| tag.favorite_order.is_none()));
+        fs::remove_dir_all(directory).unwrap();
+
+        let (database, directory) = test_database();
+        assert!(database.initialize_tag_library(&[]).unwrap().is_empty());
+        assert!(database
+            .initialize_tag_library(&["默认道具".into()])
+            .unwrap()
+            .is_empty());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn library_tags_survive_note_changes_and_only_unused_tags_can_be_deleted() {
+        let (database, directory) = test_database();
+        database.initialize_tag_library(&[]).unwrap();
+        let created = database.create_note(sample_input("标签复用")).unwrap();
+        let attack = database
+            .get_tags()
+            .unwrap()
+            .into_iter()
+            .find(|tag| tag.name == "进攻")
+            .unwrap();
+        assert_eq!(attack.usage_count, 1);
+        assert!(database.delete_unused_tag(attack.id).is_err());
+        database.set_tag_favorite("进攻", true).unwrap();
+        let mut input = sample_input("标签复用");
+        input.tags.clear();
+        database.update_note(created.id, input).unwrap();
+        let attack = database
+            .get_tags()
+            .unwrap()
+            .into_iter()
+            .find(|tag| tag.id == attack.id)
+            .unwrap();
+        assert_eq!(attack.usage_count, 0);
+        assert!(attack.favorite_order.is_some());
+        database.delete_note(created.id).unwrap();
+        database.initialize().unwrap();
+        assert_eq!(database.get_tags().unwrap().len(), 2);
+        database.delete_unused_tag(attack.id).unwrap();
+        assert_eq!(database.get_tags().unwrap().len(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn favorite_limit_is_atomic_and_reusing_an_existing_favorite_still_works() {
+        let (database, directory) = test_database();
+        database.initialize_tag_library(&[]).unwrap();
+        for index in 0..20 {
+            database
+                .set_tag_favorite(&format!("常用{index}"), true)
+                .unwrap();
+        }
+        assert!(database.set_tag_favorite("第21个", true).is_err());
+        assert_eq!(database.get_tags().unwrap().len(), 20);
+        assert_eq!(database.set_tag_favorite("常用0", true).unwrap().len(), 20);
+        database.set_tag_favorite("常用0", false).unwrap();
+        let tags = database.set_tag_favorite("新常用", true).unwrap();
+        assert_eq!(
+            tags.iter()
+                .filter(|tag| tag.favorite_order.is_some())
+                .count(),
+            20
+        );
+        assert!(database.set_tag_favorite(&"长".repeat(25), true).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn old_tag_and_image_columns_migrate_without_deleting_library_entries() {
+        let (database, directory) = test_database();
+        database.create_tag("旧版未使用标签").unwrap();
+        let connection = database.open().unwrap();
+        connection.execute_batch("ALTER TABLE tags DROP COLUMN favorite_order; ALTER TABLE note_images DROP COLUMN display_name;").unwrap();
+        drop(connection);
+        database.initialize().unwrap();
+        database.initialize().unwrap();
+        let tags = database
+            .initialize_tag_library(&["旧版未使用标签".into()])
+            .unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].favorite_order, Some(0));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn invalid_image_name_rolls_back_note_and_cleans_previously_copied_images() {
+        let (database, directory) = test_database();
+        let source = directory.join("name-source.png");
+        image::DynamicImage::new_rgba8(2, 2).save(&source).unwrap();
+        let result = database.save_note_with_images(
+            None,
+            sample_input("不应写入"),
+            vec![
+                NoteImageInput {
+                    existing_id: None,
+                    source_path: Some(source.to_string_lossy().into_owned()),
+                    image_type: "站位".into(),
+                    display_name: "有效名称".into(),
+                },
+                NoteImageInput {
+                    existing_id: None,
+                    source_path: Some(source.to_string_lossy().into_owned()),
+                    image_type: "效果".into(),
+                    display_name: "长".repeat(81),
+                },
+            ],
+        );
+        assert!(result.unwrap_err().contains("80"));
+        assert!(database.get_notes().unwrap().is_empty());
+        assert!(database.get_tags().unwrap().is_empty());
+        let month_directory =
+            directory.join(format!("images/{}", chrono::Local::now().format("%Y/%m")));
+        assert_eq!(fs::read_dir(month_directory).unwrap().count(), 0);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn initialization_retains_unused_library_tags() {
         let (database, directory) = test_database();
         database
             .create_tag("旧版残留标签")
@@ -1182,9 +1515,9 @@ mod tests {
 
         database
             .initialize()
-            .expect("reinitialization should clean orphan tags");
+            .expect("reinitialization should retain library tags");
 
-        assert!(database.get_tags().expect("tags should load").is_empty());
+        assert_eq!(database.get_tags().expect("tags should load").len(), 1);
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
@@ -1202,11 +1535,13 @@ mod tests {
                 sample_input("多图笔记"),
                 vec![
                     NoteImageInput {
+                        display_name: "投掷参照".to_string(),
                         existing_id: None,
                         source_path: Some(first_source.to_string_lossy().into_owned()),
                         image_type: "站位".to_string(),
                     },
                     NoteImageInput {
+                        display_name: "投掷参照".to_string(),
                         existing_id: None,
                         source_path: Some(second_source.to_string_lossy().into_owned()),
                         image_type: "瞄点".to_string(),
@@ -1215,6 +1550,10 @@ mod tests {
             )
             .expect("note and images should be saved");
         assert_eq!(created.images.len(), 2);
+        assert!(created
+            .images
+            .iter()
+            .all(|image| image.display_name == "投掷参照"));
         assert_eq!(created.images[0].image_type, "站位");
         assert_eq!(created.images[1].image_type, "瞄点");
         assert!(Path::new(&created.images[0].image_path).is_file());
@@ -1238,11 +1577,13 @@ mod tests {
                 sample_input("多图笔记"),
                 vec![
                     NoteImageInput {
+                        display_name: "命中效果".to_string(),
                         existing_id: Some(created.images[1].id),
                         source_path: None,
                         image_type: "效果".to_string(),
                     },
                     NoteImageInput {
+                        display_name: "投掷参照".to_string(),
                         existing_id: Some(created.images[0].id),
                         source_path: None,
                         image_type: "站位".to_string(),
@@ -1252,6 +1593,13 @@ mod tests {
             .expect("images should be reordered");
         assert_eq!(reordered.images[0].id, created.images[1].id);
         assert_eq!(reordered.images[0].image_type, "效果");
+        assert_eq!(reordered.images[0].display_name, "命中效果");
+        assert_eq!(reordered.images[0].image_path, created.images[1].image_path);
+        assert_eq!(reordered.images[1].display_name, "投掷参照");
+        assert_eq!(
+            database.get_note(created.id).unwrap().unwrap().images[0].display_name,
+            "命中效果"
+        );
 
         let removed_path = reordered.images[0].image_path.clone();
         let retained_path = reordered.images[1].image_path.clone();
@@ -1261,6 +1609,7 @@ mod tests {
                 Some(created.id),
                 sample_input("多图笔记"),
                 vec![NoteImageInput {
+                    display_name: "投掷参照".to_string(),
                     existing_id: Some(retained_id),
                     source_path: None,
                     image_type: "站位".to_string(),
@@ -1292,6 +1641,7 @@ mod tests {
                 None,
                 sample_input("标注测试"),
                 vec![NoteImageInput {
+                    display_name: "窗沿瞄准参照".to_string(),
                     existing_id: None,
                     source_path: Some(source.to_string_lossy().into_owned()),
                     image_type: "瞄点".to_string(),
@@ -1316,6 +1666,7 @@ mod tests {
             .annotated_path
             .clone()
             .expect("annotated path should exist");
+        assert_eq!(annotated.images[0].display_name, "窗沿瞄准参照");
         assert!(Path::new(&original_path).exists());
         assert!(Path::new(&annotated_path).exists());
         assert_eq!(
@@ -1326,6 +1677,7 @@ mod tests {
         let cleared = database
             .save_image_annotation(created.images[0].id, None, None)
             .expect("annotation should clear");
+        assert_eq!(cleared.images[0].display_name, "窗沿瞄准参照");
         assert!(cleared.images[0].annotated_path.is_none());
         assert!(cleared.images[0].annotation_data.is_none());
         assert!(Path::new(&original_path).exists());
@@ -1362,5 +1714,53 @@ mod tests {
             .expect_err("blank map should be rejected");
         assert_eq!(error, "地图不能为空");
         fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn edited_annotation_objects_keep_ids_multiline_text_original_and_image_name() {
+        let (database, directory) = test_database();
+        let source = directory.join("editable-source.png");
+        image::DynamicImage::new_rgba8(128, 64)
+            .save(&source)
+            .unwrap();
+        let created = database
+            .save_note_with_images(
+                None,
+                sample_input("可编辑标注"),
+                vec![NoteImageInput {
+                    existing_id: None,
+                    source_path: Some(source.to_string_lossy().into_owned()),
+                    image_type: "瞄点".into(),
+                    display_name: "窗沿参照".into(),
+                }],
+            )
+            .unwrap();
+        let original = created.images[0].image_path.clone();
+        let image_id = created.images[0].id;
+        let png = format!(
+            "data:image/png;base64,{}",
+            BASE64_STANDARD.encode(fs::read(&source).unwrap())
+        );
+        let before = r##"[{"id":"stable-text","tool":"text","point":{"x":0.1,"y":0.2},"text":"原文字","color":"#ffffff","fontSize":32,"textBaseline":"top"}]"##;
+        let after = r##"[{"id":"stable-text","tool":"text","point":{"x":0.3,"y":0.4},"text":"修改第一行\n\n第三行","color":"#31a8ff","fontSize":44,"textBaseline":"top"}]"##;
+        let first = database
+            .save_image_annotation(image_id, Some(&png), Some(before))
+            .unwrap();
+        let old_annotation = first.images[0].annotated_path.clone().unwrap();
+        database
+            .save_image_annotation(image_id, Some(&png), Some(after))
+            .unwrap();
+        let reopened = Database::new(directory.join("notebook.db"))
+            .get_note(created.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(reopened.images[0].annotation_data.as_deref(), Some(after));
+        assert_eq!(reopened.images[0].display_name, "窗沿参照");
+        assert_eq!(reopened.images[0].image_path, original);
+        assert!(Path::new(&original).is_file());
+        assert!(!Path::new(&old_annotation).exists());
+        let decoded = image::open(reopened.images[0].annotated_path.as_ref().unwrap()).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (128, 64));
+        fs::remove_dir_all(directory).unwrap();
     }
 }

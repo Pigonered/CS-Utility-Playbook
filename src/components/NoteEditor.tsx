@@ -1,6 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { importClipboardImage, pickImageFiles } from "../services/images";
+import { TagLibrary } from "./TagLibrary";
+import { cleanTag, MAX_TAGS, MAX_TAG_LENGTH, withTag } from "../types/tags";
 import { screenshotApi } from "../services/screenshot";
 import {
   GRENADE_TYPES,
@@ -19,12 +21,6 @@ import {
 import { CloseIcon, ImageIcon, PlusIcon, TrashIcon } from "./icons";
 import { DEFAULT_THROW_METHOD, formatThrowMethod } from "../types/throwMethod";
 import { ThrowMethodPicker } from "./ThrowMethodPicker";
-
-const DEFAULT_COMMON_TAGS = ["默认道具", "进攻", "防守", "残局", "必学"] as const;
-const COMMON_TAGS_STORAGE_KEY = "cs-notes.common-tags";
-const MAX_TAGS = 12;
-const MAX_TAG_LENGTH = 24;
-const MAX_COMMON_TAGS = 20;
 
 type RequiredField = "title" | "mapName" | "side" | "grenadeType";
 
@@ -45,6 +41,7 @@ interface NoteEditorProps {
   maps: readonly MapName[];
   capturedImagePaths?: string[];
   availableTags: Tag[];
+  onTagsChange: (tags: Tag[]) => void;
   screenshotShortcut: string | null;
   isSaving: boolean;
   error: string | null;
@@ -65,35 +62,6 @@ function fileName(path: string): string {
   return path.split(/[\\/]/).pop() || "未命名图片";
 }
 
-function cleanTag(value: string): string {
-  return value.trim().replace(/^#+/, "").trim();
-}
-
-function normalizeTags(values: unknown[]): string[] {
-  const unique = new Set<string>();
-  const normalized: string[] = [];
-  values.forEach((value) => {
-    if (typeof value !== "string") return;
-    const tag = cleanTag(value);
-    const key = tag.toLocaleLowerCase("zh-CN");
-    if (!tag || tag.length > MAX_TAG_LENGTH || unique.has(key)) return;
-    unique.add(key);
-    normalized.push(tag);
-  });
-  return normalized.slice(0, MAX_COMMON_TAGS);
-}
-
-function loadCommonTags(): string[] {
-  try {
-    const saved = window.localStorage.getItem(COMMON_TAGS_STORAGE_KEY);
-    if (saved === null) return [...DEFAULT_COMMON_TAGS];
-    const parsed: unknown = JSON.parse(saved);
-    return Array.isArray(parsed) ? normalizeTags(parsed) : [...DEFAULT_COMMON_TAGS];
-  } catch {
-    return [...DEFAULT_COMMON_TAGS];
-  }
-}
-
 function suggestedCaptureType(index: number): ImageType {
   if (index === 0) return "站位";
   if (index === 1) return "瞄点";
@@ -105,14 +73,14 @@ function createInitialImages(note: Note | null, capturedImagePaths: string[]): E
   const existingImages = note?.images.map((image) => ({
     key: `existing-${image.id}`,
     existingId: image.id,
-    displayName: fileName(image.imagePath),
+    displayName: image.displayName ?? "",
     previewPath: image.annotatedPath ?? image.imagePath,
     imageType: image.imageType,
   })) ?? [];
   const pendingImages = capturedImagePaths.map((path, index) => ({
     key: `capture-${index}-${path}`,
     sourcePath: path,
-    displayName: fileName(path),
+    displayName: `截图 ${existingImages.length + index + 1}`,
     previewPath: path,
     imageType: suggestedCaptureType(existingImages.length + index),
   }));
@@ -139,16 +107,16 @@ const fieldLabels: Record<RequiredField, string> = {
   grenadeType: "道具类型",
 };
 
-export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availableTags, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
+export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availableTags, onTagsChange, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
   const [form, setForm] = useState<FormState>(() => createInitialState(note));
   const [images, setImages] = useState<EditorImage[]>(() => createInitialImages(note, capturedImagePaths));
   const [tags, setTags] = useState<string[]>(() => note?.tags.map((tag) => tag.name) ?? []);
   const [tagDraft, setTagDraft] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
-  const [commonTags, setCommonTags] = useState<string[]>(loadCommonTags);
+  const commonTags = availableTags.filter((tag) => tag.favoriteOrder !== null).map((tag) => tag.name);
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false);
+  const tagBusyRef = useRef(false);
   const [isEditingCommonTags, setIsEditingCommonTags] = useState(false);
-  const [commonTagDraft, setCommonTagDraft] = useState("");
-  const [commonTagError, setCommonTagError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RequiredField, string>>>({});
   const [imageError, setImageError] = useState<string | null>(null);
   const [isPickingImages, setIsPickingImages] = useState(false);
@@ -165,12 +133,12 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
     return commonTags.filter((tag) => !selected.has(tag.toLocaleLowerCase("zh-CN")));
   }, [commonTags, tags]);
 
-  const availableCommonTagOptions = useMemo(() => {
-    const common = new Set(commonTags.map((tag) => tag.toLocaleLowerCase("zh-CN")));
-    return availableTags
-      .map((tag) => tag.name)
-      .filter((tag) => !common.has(tag.toLocaleLowerCase("zh-CN")));
-  }, [availableTags, commonTags]);
+  const reusableTags = useMemo(() => {
+    const query = cleanTag(tagDraft).toLocaleLowerCase("zh-CN");
+    const selected = new Set(tags.map((tag) => tag.toLocaleLowerCase("zh-CN")));
+    return availableTags.filter((tag) => !selected.has(tag.name.toLocaleLowerCase("zh-CN"))
+      && (query ? tag.name.toLocaleLowerCase("zh-CN").includes(query) : tag.favoriteOrder === null));
+  }, [availableTags, tags, tagDraft]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -183,20 +151,12 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(COMMON_TAGS_STORAGE_KEY, JSON.stringify(commonTags));
-    } catch {
-      // 存储不可用时仍保留当前编辑会话中的设置。
-    }
-  }, [commonTags]);
-
-  useEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isSaving) onClose();
+      if (event.key === "Escape" && !isSaving && !tagBusyRef.current) onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -211,7 +171,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       ...additions.map((path, index) => ({
         key: `capture-${Date.now()}-${pendingImageId.current++}`,
         sourcePath: path,
-        displayName: fileName(path),
+        displayName: `截图 ${current.length + index + 1}`,
         previewPath: path,
         imageType: suggestedCaptureType(current.length + index),
       })),
@@ -236,7 +196,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSaving || isPickingImages || importBusyRef.current) return;
+    if (isSaving || isPickingImages || importBusyRef.current || tagBusyRef.current) return;
     const nextErrors: Partial<Record<RequiredField, string>> = {};
     (Object.keys(fieldLabels) as RequiredField[]).forEach((field) => {
       if (!form[field].trim()) nextErrors[field] = `请选择或填写${fieldLabels[field]}`;
@@ -250,9 +210,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       setTagError(`每个标签最多 ${MAX_TAG_LENGTH} 个字符`);
       return;
     }
-    const submittedTags = draft && !tags.some((tag) => tag.toLocaleLowerCase("zh-CN") === draft.toLocaleLowerCase("zh-CN"))
-      ? [...tags, draft]
-      : tags;
+    const submittedTags = draft ? withTag(tags, draft) : tags;
     if (submittedTags.length > MAX_TAGS) {
       setTagError(`每条笔记最多添加 ${MAX_TAGS} 个标签`);
       return;
@@ -271,8 +229,8 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
     };
     const imageItems: NoteImageInput[] = images.map((image) => (
       image.existingId !== undefined
-        ? { existingId: image.existingId, imageType: image.imageType }
-        : { sourcePath: image.sourcePath, imageType: image.imageType }
+        ? { existingId: image.existingId, imageType: image.imageType, displayName: image.displayName.trim() }
+        : { sourcePath: image.sourcePath, imageType: image.imageType, displayName: image.displayName.trim() }
     ));
     onSave(input, imageItems);
   };
@@ -287,13 +245,12 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       setTagError(`每个标签最多 ${MAX_TAG_LENGTH} 个字符`);
       return;
     }
-    if (tags.length >= MAX_TAGS) {
+    const nextTags = withTag(tags, tag);
+    if (nextTags.length > MAX_TAGS) {
       setTagError(`每条笔记最多添加 ${MAX_TAGS} 个标签`);
       return;
     }
-    if (!tags.some((current) => current.toLocaleLowerCase("zh-CN") === tag.toLocaleLowerCase("zh-CN"))) {
-      setTags((current) => [...current, tag]);
-    }
+    setTags(nextTags);
     setTagDraft("");
     setTagError(null);
   };
@@ -304,43 +261,12 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   };
 
   const handleTagKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "Enter" || event.key === "," || event.key === "，") {
       event.preventDefault();
       addTag(tagDraft);
     } else if (event.key === "Backspace" && !tagDraft && tags.length > 0) {
       removeTag(tags[tags.length - 1]);
-    }
-  };
-
-  const addCommonTag = () => {
-    const tag = cleanTag(commonTagDraft);
-    if (!tag) return;
-    if (tag.length > MAX_TAG_LENGTH) {
-      setCommonTagError(`每个标签最多 ${MAX_TAG_LENGTH} 个字符`);
-      return;
-    }
-    if (commonTags.length >= MAX_COMMON_TAGS) {
-      setCommonTagError(`常用标签最多设置 ${MAX_COMMON_TAGS} 个`);
-      return;
-    }
-    if (commonTags.some((current) => current.toLocaleLowerCase("zh-CN") === tag.toLocaleLowerCase("zh-CN"))) {
-      setCommonTagError("该标签已在常用标签中");
-      return;
-    }
-    setCommonTags((current) => [...current, tag]);
-    setCommonTagDraft("");
-    setCommonTagError(null);
-  };
-
-  const removeCommonTag = (tagToRemove: string) => {
-    setCommonTags((current) => current.filter((tag) => tag !== tagToRemove));
-    setCommonTagError(null);
-  };
-
-  const handleCommonTagKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" || event.key === "," || event.key === "，") {
-      event.preventDefault();
-      addCommonTag();
     }
   };
 
@@ -356,7 +282,8 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
           .map((path) => ({
             key: `pending-${Date.now()}-${pendingImageId.current++}`,
             sourcePath: path,
-            displayName: fileName(path),
+            displayName: fileName(path).replace(/\.[^.]+$/, "").slice(0, 80),
+            previewPath: path,
             imageType: "其他" as ImageType,
           }));
         return [...current, ...additions];
@@ -369,7 +296,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   };
 
   const handleImportClipboard = async () => {
-    if (isSaving || isPickingImages || importBusyRef.current) return;
+    if (isSaving || isPickingImages || importBusyRef.current || tagBusyRef.current) return;
     importBusyRef.current = true;
     setIsImportingClipboard(true);
     setImageError(null);
@@ -384,7 +311,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
         key: `clipboard-${pendingImageId.current++}`,
         sourcePath: imported.path,
         previewPath: imported.path,
-        displayName: `剪贴板图片 ${clipboardPathsRef.current.size}（${imported.width} × ${imported.height}）`,
+        displayName: `剪贴板图片 ${current.length + 1}`,
         imageType: suggestedCaptureType(current.length),
       }]);
     } catch (clipboardError) {
@@ -427,7 +354,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       className="editor-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !isSaving) onClose();
+        if (event.target === event.currentTarget && !isSaving && !tagBusyRef.current) onClose();
       }}
     >
       <section className="note-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
@@ -437,7 +364,7 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
             <h2 id="editor-title">{mode === "create" ? "新建笔记" : "编辑笔记"}</h2>
             <p>{mode === "create" ? "记录一个新的 CS2 道具瞄点" : "修改当前笔记的基础信息"}</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving} aria-label="关闭编辑器"><CloseIcon /></button>
+          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving || isUpdatingTags} aria-label="关闭编辑器"><CloseIcon /></button>
         </header>
 
         <form className="editor-form" onSubmit={handleSubmit} noValidate>
@@ -536,66 +463,29 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                       setTagError(null);
                     }}
                     onKeyDown={handleTagKeyDown}
-                    onBlur={() => addTag(tagDraft)}
-                    placeholder={tags.length === 0 ? "输入标签后按 Enter，例如：关键道具" : "继续添加…"}
+                    placeholder="搜索已有标签，或输入新标签后按 Enter"
                     maxLength={MAX_TAG_LENGTH + 1}
-                    disabled={isSaving || tags.length >= MAX_TAGS}
+                    disabled={isSaving}
                     aria-label="添加标签"
                   />
                 </div>
                 {tagError && <small className="tag-error">{tagError}</small>}
                 <div className="tag-suggestions">
                   <span>常用标签</span>
-                  {!isEditingCommonTags && tags.length < MAX_TAGS && tagSuggestions.map((tag) => (
+                  {tagSuggestions.map((tag) => (
                     <button type="button" key={tag} onClick={() => addTag(tag)} disabled={isSaving}>+ {tag}</button>
                   ))}
-                  {!isEditingCommonTags && tagSuggestions.length === 0 && <small>暂无可添加标签</small>}
-                  <button
-                    type="button"
-                    className="common-tags-edit-button"
-                    onClick={() => {
-                      setIsEditingCommonTags((current) => !current);
-                      setCommonTagDraft("");
-                      setCommonTagError(null);
-                    }}
-                    disabled={isSaving}
-                  >
-                    {isEditingCommonTags ? "完成" : "修改"}
-                  </button>
+                  {tagSuggestions.length === 0 && <small>暂无可添加的常用标签</small>}
+                  <button type="button" className="common-tags-edit-button" disabled={isSaving || isUpdatingTags}
+                    onClick={() => setIsEditingCommonTags((current) => !current)}>{isEditingCommonTags ? "完成管理" : "管理标签库"}</button>
                 </div>
-                {isEditingCommonTags && (
-                  <div className="common-tags-manager">
-                    <div className="common-tags-list">
-                      {commonTags.map((tag) => (
-                        <span key={tag}>
-                          #{tag}
-                          <button type="button" onClick={() => removeCommonTag(tag)} disabled={isSaving} aria-label={`从常用标签中删除 ${tag}`}><CloseIcon /></button>
-                        </span>
-                      ))}
-                      {commonTags.length === 0 && <small>还没有常用标签</small>}
-                    </div>
-                    <div className="common-tag-add-row">
-                      <input
-                        value={commonTagDraft}
-                        onChange={(event) => {
-                          setCommonTagDraft(event.target.value);
-                          setCommonTagError(null);
-                        }}
-                        onKeyDown={handleCommonTagKeyDown}
-                        placeholder="输入要添加的常用标签"
-                        maxLength={MAX_TAG_LENGTH + 1}
-                        list="available-common-tags"
-                        disabled={isSaving || commonTags.length >= MAX_COMMON_TAGS}
-                        aria-label="添加常用标签"
-                      />
-                      <datalist id="available-common-tags">
-                        {availableCommonTagOptions.map((tag) => <option value={tag} key={tag} />)}
-                      </datalist>
-                      <button type="button" onClick={addCommonTag} disabled={isSaving || !commonTagDraft.trim() || commonTags.length >= MAX_COMMON_TAGS}>添加</button>
-                    </div>
-                    {commonTagError && <small className="tag-error">{commonTagError}</small>}
-                  </div>
-                )}
+                <div className="tag-suggestions reusable-tags">
+                  <span>{cleanTag(tagDraft) ? "匹配标签" : "已有标签"}</span>
+                  {reusableTags.slice(0, 12).map((tag) => <button type="button" key={tag.id} disabled={isSaving} onClick={() => addTag(tag.name)}>+ {tag.name}</button>)}
+                  {reusableTags.length > 12 && <small>还有 {reusableTags.length - 12} 个，输入名称继续搜索</small>}
+                  {reusableTags.length === 0 && <small>{cleanTag(tagDraft) ? "没有匹配项，按 Enter 创建新标签" : "保存过的标签会显示在这里"}</small>}
+                </div>
+                {isEditingCommonTags && <TagLibrary tags={availableTags} disabled={isSaving} onChange={onTagsChange} onBusyChange={(busy) => { tagBusyRef.current = busy; setIsUpdatingTags(busy); }} />}
               </div>
             </section>
 
@@ -639,7 +529,11 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                         ) : <ImageIcon />}
                       </div>
                       <div className="editor-image-info">
-                        <strong>{image.displayName}</strong>
+                        <input className="image-name-input" aria-label={`图片 ${index + 1} 名称`} placeholder={`图片 ${index + 1} · ${image.imageType}`} maxLength={80}
+                          value={image.displayName} disabled={isSaving} onChange={(event) => {
+                            const displayName = event.target.value;
+                            setImages((current) => current.map((item) => item.key === image.key ? { ...item, displayName } : item));
+                          }} />
                         <select
                           className="image-type-select"
                           value={image.imageType}
@@ -669,8 +563,8 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
           <footer className="editor-footer">
             <span>{mode === "edit" ? "保存后详情会立即更新" : "保存后将自动选中新笔记"}</span>
             <div>
-              <button type="button" className="secondary-button" onClick={onClose} disabled={isSaving || isPickingImages}>取消</button>
-              <button type="submit" className="primary-button editor-save" disabled={isSaving || isPickingImages || isImportingClipboard}>
+              <button type="button" className="secondary-button" onClick={onClose} disabled={isSaving || isPickingImages || isUpdatingTags}>取消</button>
+              <button type="submit" className="primary-button editor-save" disabled={isSaving || isPickingImages || isImportingClipboard || isUpdatingTags}>
                 {isSaving && <span className="button-spinner" />}
                 {isSaving ? "正在保存" : "保存笔记"}
               </button>
