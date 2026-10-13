@@ -3,7 +3,11 @@ import test from "node:test";
 import { cleanTag, withTag, ratingGroup, loadLegacyCommonTags } from "../src/types/tags.ts";
 
 test("rating changes replace only the same group, including when twelve tags are selected", () => {
-  const tags = [...Array.from({ length: 10 }, (_, index) => `标签${index}`), "容错率：2/5", "实用性：4/5"];
+  const tags = [
+    ...Array.from({ length: 10 }, (_, index) => `标签${index}`),
+    "容错率：2/5",
+    "实用性：4/5",
+  ];
   const changed = withTag(tags, "容错率：5/5");
   assert.equal(changed.length, 12);
   assert.ok(!changed.includes("容错率：2/5"));

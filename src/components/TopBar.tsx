@@ -17,7 +17,13 @@ export function TopBar({ searchQuery, onSearchChange, onCreateNote, onOpenSettin
           <PlusIcon />
           新建笔记
         </button>
-        <button className="icon-button settings-button" type="button" onClick={onOpenSettings} aria-label="打开设置" title="设置">
+        <button
+          className="icon-button settings-button"
+          type="button"
+          onClick={onOpenSettings}
+          aria-label="打开设置"
+          title="设置"
+        >
           <SettingsIcon />
         </button>
       </div>

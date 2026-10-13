@@ -15,8 +15,11 @@ export function withTag(tags: string[], value: string): string[] {
   if (!tag) return tags;
   const group = ratingGroup(tag);
   const retained = group ? tags.filter((current) => ratingGroup(current) !== group) : tags;
-  return retained.some((current) => current.toLocaleLowerCase("zh-CN") === tag.toLocaleLowerCase("zh-CN"))
-    ? retained : [...retained, tag];
+  return retained.some(
+    (current) => current.toLocaleLowerCase("zh-CN") === tag.toLocaleLowerCase("zh-CN"),
+  )
+    ? retained
+    : [...retained, tag];
 }
 
 export function loadLegacyCommonTags(): string[] {
@@ -26,13 +29,16 @@ export function loadLegacyCommonTags(): string[] {
     const parsed: unknown = JSON.parse(saved);
     if (!Array.isArray(parsed)) return [...DEFAULT_COMMON_TAGS];
     const unique = new Set<string>();
-    return parsed.filter((value): value is string => typeof value === "string")
-      .map(cleanTag).filter((tag) => {
+    return parsed
+      .filter((value): value is string => typeof value === "string")
+      .map(cleanTag)
+      .filter((tag) => {
         const key = tag.toLocaleLowerCase("zh-CN");
         if (!tag || tag.length > MAX_TAG_LENGTH || unique.has(key)) return false;
         unique.add(key);
         return true;
-      }).slice(0, 20);
+      })
+      .slice(0, 20);
   } catch {
     return [...DEFAULT_COMMON_TAGS];
   }

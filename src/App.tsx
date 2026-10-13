@@ -11,7 +11,18 @@ import { notesApi } from "./services/notes";
 import { screenshotApi } from "./services/screenshot";
 import type { BackupOperationResult } from "./services/backup";
 import { settingsApi, type AppSettings } from "./services/settings";
-import { DEFAULT_MAPS, grenadeTypeLabel, throwTypeLabel, type MapName, type Note, type NoteFilters, type NoteImage, type NoteImageInput, type NoteInput, type Tag } from "./types/note";
+import {
+  DEFAULT_MAPS,
+  grenadeTypeLabel,
+  throwTypeLabel,
+  type MapName,
+  type Note,
+  type NoteFilters,
+  type NoteImage,
+  type NoteImageInput,
+  type NoteInput,
+  type Tag,
+} from "./types/note";
 
 const initialFilters: NoteFilters = { mapName: null, side: null, grenadeType: null, tagName: null };
 const MAP_PREFERENCES_STORAGE_KEY = "cs-notes.map-preferences";
@@ -45,7 +56,9 @@ function loadMapPreferences(): MapPreferences {
     const savedOrder = Array.isArray(candidate.order) ? uniqueMaps(candidate.order) : [];
     const order = uniqueMaps([...savedOrder, ...DEFAULT_MAPS]);
     const hidden = Array.isArray(candidate.hidden)
-      ? uniqueMaps(candidate.hidden).filter((name) => order.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en")))
+      ? uniqueMaps(candidate.hidden).filter((name) =>
+          order.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en")),
+        )
       : [];
     return { order, hidden };
   } catch {
@@ -103,13 +116,13 @@ function App() {
       ]);
       setNotes(loadedNotes);
       setAvailableTags(loadedTags);
-      setSelectedId((currentId) => (
+      setSelectedId((currentId) =>
         preferredId !== undefined && loadedNotes.some((note) => note.id === preferredId)
           ? preferredId
           : currentId !== null && loadedNotes.some((note) => note.id === currentId)
-          ? currentId
-          : loadedNotes[0]?.id ?? null
-      ));
+            ? currentId
+            : (loadedNotes[0]?.id ?? null),
+      );
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "无法读取本地数据库");
       setNotes([]);
@@ -133,7 +146,8 @@ function App() {
   }, [mapPreferences]);
 
   useEffect(() => {
-    void settingsApi.get()
+    void settingsApi
+      .get()
       .then(setAppSettings)
       .catch((error: unknown) => {
         setNotice(error instanceof Error ? error.message : "无法读取应用设置");
@@ -158,22 +172,26 @@ function App() {
       });
       setNotice("截图已追加到当前笔记");
       window.setTimeout(() => setNotice(null), 2600);
-    }).then((unlisten) => {
-      if (disposed) unlisten();
-      else unlisteners.push(unlisten);
-    }).catch(() => {
-      // 普通浏览器预览没有 Tauri 事件通道，桌面应用中会正常注册。
-    });
+    })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unlisteners.push(unlisten);
+      })
+      .catch(() => {
+        // 普通浏览器预览没有 Tauri 事件通道，桌面应用中会正常注册。
+      });
 
     void listen<string>("screenshot-error", (event) => {
       setNotice(event.payload || "截图失败");
       window.setTimeout(() => setNotice(null), 3200);
-    }).then((unlisten) => {
-      if (disposed) unlisten();
-      else unlisteners.push(unlisten);
-    }).catch(() => {
-      // 普通浏览器预览没有 Tauri 事件通道，桌面应用中会正常注册。
-    });
+    })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unlisteners.push(unlisten);
+      })
+      .catch(() => {
+        // 普通浏览器预览没有 Tauri 事件通道，桌面应用中会正常注册。
+      });
 
     return () => {
       disposed = true;
@@ -184,12 +202,15 @@ function App() {
   const filteredNotes = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase("zh-CN");
     return notes.filter((note) => {
-      const matchesFilters = (!filters.mapName || note.mapName === filters.mapName)
-        && (!filters.side || note.side === filters.side)
-        && (!filters.grenadeType || note.grenadeType === filters.grenadeType)
-        && (!filters.tagName || note.tags.some(
-          (tag) => tag.name.toLocaleLowerCase("zh-CN") === filters.tagName?.toLocaleLowerCase("zh-CN"),
-        ));
+      const matchesFilters =
+        (!filters.mapName || note.mapName === filters.mapName) &&
+        (!filters.side || note.side === filters.side) &&
+        (!filters.grenadeType || note.grenadeType === filters.grenadeType) &&
+        (!filters.tagName ||
+          note.tags.some(
+            (tag) =>
+              tag.name.toLocaleLowerCase("zh-CN") === filters.tagName?.toLocaleLowerCase("zh-CN"),
+          ));
       if (!matchesFilters || !query) return matchesFilters;
       const searchable = [
         note.title,
@@ -213,9 +234,9 @@ function App() {
 
   const updateMaps = (order: MapName[], hidden: MapName[]) => {
     const normalizedOrder = uniqueMaps(order);
-    const normalizedHidden = uniqueMaps(hidden).filter((name) => (
-      normalizedOrder.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en"))
-    ));
+    const normalizedHidden = uniqueMaps(hidden).filter((name) =>
+      normalizedOrder.some((map) => map.toLocaleLowerCase("en") === name.toLocaleLowerCase("en")),
+    );
     setMapPreferences({ order: normalizedOrder, hidden: normalizedHidden });
   };
 
@@ -233,13 +254,16 @@ function App() {
       setSelectedNote(null);
       setDetailError(null);
       setIsDetailLoading(false);
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
 
     setSelectedNote(null);
     setDetailError(null);
     setIsDetailLoading(true);
-    void notesApi.getNote(selectedId)
+    void notesApi
+      .getNote(selectedId)
       .then((note) => {
         if (!cancelled) setSelectedNote(note);
       })
@@ -250,14 +274,16 @@ function App() {
         if (!cancelled) setIsDetailLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        document.querySelector<HTMLInputElement>('.search-bar input')?.focus();
+        document.querySelector<HTMLInputElement>(".search-bar input")?.focus();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -357,7 +383,7 @@ function App() {
         annotationData,
       );
       setSelectedNote(savedNote);
-      setNotes((current) => current.map((note) => note.id === savedNote.id ? savedNote : note));
+      setNotes((current) => current.map((note) => (note.id === savedNote.id ? savedNote : note)));
       setAnnotationImage(null);
       showPhaseNotice(annotationData ? "图片标注已保存" : "图片已恢复为原图");
     } catch (error) {
@@ -463,7 +489,11 @@ function App() {
           onRestored={handleBackupRestored}
         />
       )}
-      {notice && <div className="toast" role="status">{notice}</div>}
+      {notice && (
+        <div className="toast" role="status">
+          {notice}
+        </div>
+      )}
     </div>
   );
 }

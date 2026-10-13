@@ -18,11 +18,15 @@ export function NoteListItem({ note, selected, onSelect }: NoteListItemProps) {
       <span className="note-item-content">
         <strong>{note.title}</strong>
         <span className="note-meta-row">
-          <span>{note.mapName}</span><i />
-          <span className={`side-label ${note.side.toLowerCase()}`}>{note.side}</span><i />
+          <span>{note.mapName}</span>
+          <i />
+          <span className={`side-label ${note.side.toLowerCase()}`}>{note.side}</span>
+          <i />
           <span>{grenadeTypeLabel(note.grenadeType)}</span>
         </span>
-        <small>{note.startPosition} → {note.targetPosition}</small>
+        <small>
+          {note.startPosition} → {note.targetPosition}
+        </small>
       </span>
       <ChevronRightIcon className="item-chevron" />
     </button>

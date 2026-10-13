@@ -33,9 +33,12 @@ export function throwMethodParts(method: ThrowMethod): string[] {
   const moving = method.movement === "走" || method.movement === "跑";
   const movement = moving ? `${method.movement}（${method.steps}）` : method.movement;
   return [
-    method.aimStance, method.releaseStance, movement,
+    method.aimStance,
+    method.releaseStance,
+    movement,
     ...(moving ? [`${method.directionAction} ${method.direction}`] : []),
-    method.button, method.jump,
+    method.button,
+    method.jump,
   ];
 }
 
@@ -54,8 +57,13 @@ export function parseThrowMethod(value: string): ThrowMethod | null {
   const [aimStance, releaseStance, movementPart] = parts;
   const button = parts[parts.length - 2];
   const jump = parts[parts.length - 1];
-  if (!isOption(AIM_STANCES, aimStance) || !isOption(RELEASE_STANCES, releaseStance)
-    || !isOption(THROW_BUTTONS, button) || !isOption(JUMP_MODES, jump)) return null;
+  if (
+    !isOption(AIM_STANCES, aimStance) ||
+    !isOption(RELEASE_STANCES, releaseStance) ||
+    !isOption(THROW_BUTTONS, button) ||
+    !isOption(JUMP_MODES, jump)
+  )
+    return null;
 
   const stepMovement = /^(走|跑)（(一步|两步)）$/.exec(movementPart);
   if (stepMovement) {
@@ -69,7 +77,12 @@ export function parseThrowMethod(value: string): ThrowMethod | null {
       direction = directionPart[2] as ThrowMethod["direction"];
     }
     return {
-      aimStance, releaseStance, button, jump, direction, directionAction,
+      aimStance,
+      releaseStance,
+      button,
+      jump,
+      direction,
+      directionAction,
       movement: stepMovement[1] as "走" | "跑",
       steps: stepMovement[2] as ThrowMethod["steps"],
     };

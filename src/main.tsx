@@ -7,7 +7,5 @@ import "./styles.css";
 const isCaptureWindow = new URLSearchParams(window.location.search).get("capture") === "1";
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    {isCaptureWindow ? <ScreenshotOverlay /> : <App />}
-  </StrictMode>,
+  <StrictMode>{isCaptureWindow ? <ScreenshotOverlay /> : <App />}</StrictMode>,
 );

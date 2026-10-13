@@ -1,5 +1,13 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ClipboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { importClipboardImage, pickImageFiles } from "../services/images";
 import { TagLibrary } from "./TagLibrary";
 import { cleanTag, MAX_TAGS, MAX_TAG_LENGTH, withTag } from "../types/tags";
@@ -24,11 +32,13 @@ import { ThrowMethodPicker } from "./ThrowMethodPicker";
 
 type RequiredField = "title" | "mapName" | "side" | "grenadeType";
 
+type FormValue<T> = T | "";
+
 interface FormState {
   title: string;
-  mapName: MapName | "";
-  side: Side | "";
-  grenadeType: GrenadeType | "";
+  mapName: MapName;
+  side: FormValue<Side>;
+  grenadeType: FormValue<GrenadeType>;
   startPosition: string;
   targetPosition: string;
   throwType: string;
@@ -70,13 +80,14 @@ function suggestedCaptureType(index: number): ImageType {
 }
 
 function createInitialImages(note: Note | null, capturedImagePaths: string[]): EditorImage[] {
-  const existingImages = note?.images.map((image) => ({
-    key: `existing-${image.id}`,
-    existingId: image.id,
-    displayName: image.displayName ?? "",
-    previewPath: image.annotatedPath ?? image.imagePath,
-    imageType: image.imageType,
-  })) ?? [];
+  const existingImages =
+    note?.images.map((image) => ({
+      key: `existing-${image.id}`,
+      existingId: image.id,
+      displayName: image.displayName ?? "",
+      previewPath: image.annotatedPath ?? image.imagePath,
+      imageType: image.imageType,
+    })) ?? [];
   const pendingImages = capturedImagePaths.map((path, index) => ({
     key: `capture-${index}-${path}`,
     sourcePath: path,
@@ -107,13 +118,29 @@ const fieldLabels: Record<RequiredField, string> = {
   grenadeType: "道具类型",
 };
 
-export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availableTags, onTagsChange, screenshotShortcut, isSaving, error, onSave, onClose }: NoteEditorProps) {
+export function NoteEditor({
+  mode,
+  note,
+  maps,
+  capturedImagePaths = [],
+  availableTags,
+  onTagsChange,
+  screenshotShortcut,
+  isSaving,
+  error,
+  onSave,
+  onClose,
+}: NoteEditorProps) {
   const [form, setForm] = useState<FormState>(() => createInitialState(note));
-  const [images, setImages] = useState<EditorImage[]>(() => createInitialImages(note, capturedImagePaths));
+  const [images, setImages] = useState<EditorImage[]>(() =>
+    createInitialImages(note, capturedImagePaths),
+  );
   const [tags, setTags] = useState<string[]>(() => note?.tags.map((tag) => tag.name) ?? []);
   const [tagDraft, setTagDraft] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
-  const commonTags = availableTags.filter((tag) => tag.favoriteOrder !== null).map((tag) => tag.name);
+  const commonTags = availableTags
+    .filter((tag) => tag.favoriteOrder !== null)
+    .map((tag) => tag.name);
   const [isUpdatingTags, setIsUpdatingTags] = useState(false);
   const tagBusyRef = useRef(false);
   const [isEditingCommonTags, setIsEditingCommonTags] = useState(false);
@@ -136,8 +163,11 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   const reusableTags = useMemo(() => {
     const query = cleanTag(tagDraft).toLocaleLowerCase("zh-CN");
     const selected = new Set(tags.map((tag) => tag.toLocaleLowerCase("zh-CN")));
-    return availableTags.filter((tag) => !selected.has(tag.name.toLocaleLowerCase("zh-CN"))
-      && (query ? tag.name.toLocaleLowerCase("zh-CN").includes(query) : tag.favoriteOrder === null));
+    return availableTags.filter(
+      (tag) =>
+        !selected.has(tag.name.toLocaleLowerCase("zh-CN")) &&
+        (query ? tag.name.toLocaleLowerCase("zh-CN").includes(query) : tag.favoriteOrder === null),
+    );
   }, [availableTags, tags, tagDraft]);
 
   useEffect(() => {
@@ -178,10 +208,13 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
     ]);
     const scrollTimer = window.setTimeout(() => {
       const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLInputElement
-        || activeElement instanceof HTMLTextAreaElement
-        || activeElement instanceof HTMLSelectElement
-        || (activeElement instanceof HTMLElement && activeElement.isContentEditable)) return;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement ||
+        (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+      )
+        return;
       imageListEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, 0);
     return () => window.clearTimeout(scrollTimer);
@@ -227,11 +260,19 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
       description: form.description.replace(/\r\n?/g, "\n"),
       tags: submittedTags,
     };
-    const imageItems: NoteImageInput[] = images.map((image) => (
+    const imageItems: NoteImageInput[] = images.map((image) =>
       image.existingId !== undefined
-        ? { existingId: image.existingId, imageType: image.imageType, displayName: image.displayName.trim() }
-        : { sourcePath: image.sourcePath, imageType: image.imageType, displayName: image.displayName.trim() }
-    ));
+        ? {
+            existingId: image.existingId,
+            imageType: image.imageType,
+            displayName: image.displayName.trim(),
+          }
+        : {
+            sourcePath: image.sourcePath,
+            imageType: image.imageType,
+            displayName: image.displayName.trim(),
+          },
+    );
     onSave(input, imageItems);
   };
 
@@ -282,7 +323,9 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
           .map((path) => ({
             key: `pending-${Date.now()}-${pendingImageId.current++}`,
             sourcePath: path,
-            displayName: fileName(path).replace(/\.[^.]+$/, "").slice(0, 80),
+            displayName: fileName(path)
+              .replace(/\.[^.]+$/, "")
+              .slice(0, 80),
             previewPath: path,
             imageType: "其他" as ImageType,
           }));
@@ -307,15 +350,21 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
         return;
       }
       clipboardPathsRef.current.add(imported.path);
-      setImages((current) => [...current, {
-        key: `clipboard-${pendingImageId.current++}`,
-        sourcePath: imported.path,
-        previewPath: imported.path,
-        displayName: `剪贴板图片 ${current.length + 1}`,
-        imageType: suggestedCaptureType(current.length),
-      }]);
+      setImages((current) => [
+        ...current,
+        {
+          key: `clipboard-${pendingImageId.current++}`,
+          sourcePath: imported.path,
+          previewPath: imported.path,
+          displayName: `剪贴板图片 ${current.length + 1}`,
+          imageType: suggestedCaptureType(current.length),
+        },
+      ]);
     } catch (clipboardError) {
-      if (mountedRef.current) setImageError(clipboardError instanceof Error ? clipboardError.message : "无法读取剪贴板图片");
+      if (mountedRef.current)
+        setImageError(
+          clipboardError instanceof Error ? clipboardError.message : "无法读取剪贴板图片",
+        );
     } finally {
       importBusyRef.current = false;
       if (mountedRef.current) setIsImportingClipboard(false);
@@ -324,7 +373,11 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
 
   const handleImagePaste = (event: ClipboardEvent<HTMLElement>) => {
     const target = event.target;
-    if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (
+      target instanceof HTMLElement &&
+      target.closest("input, textarea, select, [contenteditable]")
+    )
+      return;
     event.preventDefault();
     void handleImportClipboard();
   };
@@ -344,9 +397,9 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
   };
 
   const setImageType = (key: string, imageType: ImageType) => {
-    setImages((current) => current.map((image) => (
-      image.key === key ? { ...image, imageType } : image
-    )));
+    setImages((current) =>
+      current.map((image) => (image.key === key ? { ...image, imageType } : image)),
+    );
   };
 
   return (
@@ -357,22 +410,41 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
         if (event.target === event.currentTarget && !isSaving && !tagBusyRef.current) onClose();
       }}
     >
-      <section className="note-editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <section
+        className="note-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editor-title"
+      >
         <header className="editor-header">
           <div>
             <span className="eyebrow">{mode === "create" ? "新建笔记" : "编辑笔记"}</span>
             <h2 id="editor-title">{mode === "create" ? "新建笔记" : "编辑笔记"}</h2>
             <p>{mode === "create" ? "记录一个新的 CS2 道具瞄点" : "修改当前笔记的基础信息"}</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={isSaving || isUpdatingTags} aria-label="关闭编辑器"><CloseIcon /></button>
+          <button
+            type="button"
+            className="editor-close"
+            onClick={onClose}
+            disabled={isSaving || isUpdatingTags}
+            aria-label="关闭编辑器"
+          >
+            <CloseIcon />
+          </button>
         </header>
 
         <form className="editor-form" onSubmit={handleSubmit} noValidate>
           <div className="editor-scroll">
             <section className="form-section">
-              <div className="form-section-title"><span>01</span><strong>基本信息</strong><small>* 为必填项</small></div>
+              <div className="form-section-title">
+                <span>01</span>
+                <strong>基本信息</strong>
+                <small>* 为必填项</small>
+              </div>
               <label className={fieldErrors.title ? "form-field has-error" : "form-field"}>
-                <span>标题 <b>*</b></span>
+                <span>
+                  标题 <b>*</b>
+                </span>
                 <input
                   ref={titleRef}
                   value={form.title}
@@ -386,52 +458,112 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
 
               <div className="form-grid three-columns">
                 <label className={fieldErrors.mapName ? "form-field has-error" : "form-field"}>
-                  <span>地图 <b>*</b></span>
-                  <select value={form.mapName} onChange={(event) => setField("mapName", event.target.value as MapName | "")} disabled={isSaving}>
+                  <span>
+                    地图 <b>*</b>
+                  </span>
+                  <select
+                    value={form.mapName}
+                    onChange={(event) => setField("mapName", event.target.value as MapName)}
+                    disabled={isSaving}
+                  >
                     <option value="">选择地图</option>
-                    {maps.map((map) => <option key={map} value={map}>{map}</option>)}
+                    {maps.map((map) => (
+                      <option key={map} value={map}>
+                        {map}
+                      </option>
+                    ))}
                   </select>
-                  {fieldErrors.mapName && <small className="field-error">{fieldErrors.mapName}</small>}
+                  {fieldErrors.mapName && (
+                    <small className="field-error">{fieldErrors.mapName}</small>
+                  )}
                 </label>
 
                 <label className={fieldErrors.side ? "form-field has-error" : "form-field"}>
-                  <span>阵营 <b>*</b></span>
-                  <select value={form.side} onChange={(event) => setField("side", event.target.value as Side | "")} disabled={isSaving}>
+                  <span>
+                    阵营 <b>*</b>
+                  </span>
+                  <select
+                    value={form.side}
+                    onChange={(event) => setField("side", event.target.value as Side | "")}
+                    disabled={isSaving}
+                  >
                     <option value="">选择阵营</option>
-                    {SIDES.map((side) => <option key={side} value={side}>{side}</option>)}
+                    {SIDES.map((side) => (
+                      <option key={side} value={side}>
+                        {side}
+                      </option>
+                    ))}
                   </select>
                   {fieldErrors.side && <small className="field-error">{fieldErrors.side}</small>}
                 </label>
 
                 <label className={fieldErrors.grenadeType ? "form-field has-error" : "form-field"}>
-                  <span>道具类型 <b>*</b></span>
-                  <select value={form.grenadeType} onChange={(event) => setField("grenadeType", event.target.value as GrenadeType | "")} disabled={isSaving}>
+                  <span>
+                    道具类型 <b>*</b>
+                  </span>
+                  <select
+                    value={form.grenadeType}
+                    onChange={(event) =>
+                      setField("grenadeType", event.target.value as GrenadeType | "")
+                    }
+                    disabled={isSaving}
+                  >
                     <option value="">选择道具</option>
-                    {GRENADE_TYPES.map((type) => <option key={type} value={type}>{GRENADE_TYPE_LABELS[type]}</option>)}
+                    {GRENADE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {GRENADE_TYPE_LABELS[type]}
+                      </option>
+                    ))}
                   </select>
-                  {fieldErrors.grenadeType && <small className="field-error">{fieldErrors.grenadeType}</small>}
+                  {fieldErrors.grenadeType && (
+                    <small className="field-error">{fieldErrors.grenadeType}</small>
+                  )}
                 </label>
               </div>
             </section>
 
             <section className="form-section">
-              <div className="form-section-title"><span>02</span><strong>投掷信息</strong><small>选填</small></div>
+              <div className="form-section-title">
+                <span>02</span>
+                <strong>投掷信息</strong>
+                <small>选填</small>
+              </div>
               <div className="form-grid two-columns">
                 <label className="form-field">
                   <span>起点</span>
-                  <input value={form.startPosition} onChange={(event) => setField("startPosition", event.target.value)} placeholder="从哪里开始" maxLength={120} disabled={isSaving} />
+                  <input
+                    value={form.startPosition}
+                    onChange={(event) => setField("startPosition", event.target.value)}
+                    placeholder="从哪里开始"
+                    maxLength={120}
+                    disabled={isSaving}
+                  />
                 </label>
                 <label className="form-field">
                   <span>落点</span>
-                  <input value={form.targetPosition} onChange={(event) => setField("targetPosition", event.target.value)} placeholder="道具落在哪里" maxLength={120} disabled={isSaving} />
+                  <input
+                    value={form.targetPosition}
+                    onChange={(event) => setField("targetPosition", event.target.value)}
+                    placeholder="道具落在哪里"
+                    maxLength={120}
+                    disabled={isSaving}
+                  />
                 </label>
               </div>
 
-              <ThrowMethodPicker value={form.throwType} disabled={isSaving} onChange={(value) => setField("throwType", value)} />
+              <ThrowMethodPicker
+                value={form.throwType}
+                disabled={isSaving}
+                onChange={(value) => setField("throwType", value)}
+              />
             </section>
 
             <section className="form-section">
-              <div className="form-section-title"><span>03</span><strong>备注说明</strong><small>选填</small></div>
+              <div className="form-section-title">
+                <span>03</span>
+                <strong>备注说明</strong>
+                <small>选填</small>
+              </div>
               <label className="form-field">
                 <span>描述</span>
                 <textarea
@@ -447,13 +579,26 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
             </section>
 
             <section className="form-section">
-              <div className="form-section-title"><span>04</span><strong>标签</strong><small>{tags.length} / {MAX_TAGS}</small></div>
+              <div className="form-section-title">
+                <span>04</span>
+                <strong>标签</strong>
+                <small>
+                  {tags.length} / {MAX_TAGS}
+                </small>
+              </div>
               <div className="tag-editor">
                 <div className="tag-input-shell">
                   {tags.map((tag) => (
                     <span className="tag-chip" key={tag}>
                       #{tag}
-                      <button type="button" onClick={() => removeTag(tag)} disabled={isSaving} aria-label={`删除标签 ${tag}`}><CloseIcon /></button>
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        disabled={isSaving}
+                        aria-label={`删除标签 ${tag}`}
+                      >
+                        <CloseIcon />
+                      </button>
                     </span>
                   ))}
                   <input
@@ -473,31 +618,84 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                 <div className="tag-suggestions">
                   <span>常用标签</span>
                   {tagSuggestions.map((tag) => (
-                    <button type="button" key={tag} onClick={() => addTag(tag)} disabled={isSaving}>+ {tag}</button>
+                    <button type="button" key={tag} onClick={() => addTag(tag)} disabled={isSaving}>
+                      + {tag}
+                    </button>
                   ))}
                   {tagSuggestions.length === 0 && <small>暂无可添加的常用标签</small>}
-                  <button type="button" className="common-tags-edit-button" disabled={isSaving || isUpdatingTags}
-                    onClick={() => setIsEditingCommonTags((current) => !current)}>{isEditingCommonTags ? "完成管理" : "管理标签库"}</button>
+                  <button
+                    type="button"
+                    className="common-tags-edit-button"
+                    disabled={isSaving || isUpdatingTags}
+                    onClick={() => setIsEditingCommonTags((current) => !current)}
+                  >
+                    {isEditingCommonTags ? "完成管理" : "管理标签库"}
+                  </button>
                 </div>
                 <div className="tag-suggestions reusable-tags">
                   <span>{cleanTag(tagDraft) ? "匹配标签" : "已有标签"}</span>
-                  {reusableTags.slice(0, 12).map((tag) => <button type="button" key={tag.id} disabled={isSaving} onClick={() => addTag(tag.name)}>+ {tag.name}</button>)}
-                  {reusableTags.length > 12 && <small>还有 {reusableTags.length - 12} 个，输入名称继续搜索</small>}
-                  {reusableTags.length === 0 && <small>{cleanTag(tagDraft) ? "没有匹配项，按 Enter 创建新标签" : "保存过的标签会显示在这里"}</small>}
+                  {reusableTags.slice(0, 12).map((tag) => (
+                    <button
+                      type="button"
+                      key={tag.id}
+                      disabled={isSaving}
+                      onClick={() => addTag(tag.name)}
+                    >
+                      + {tag.name}
+                    </button>
+                  ))}
+                  {reusableTags.length > 12 && (
+                    <small>还有 {reusableTags.length - 12} 个，输入名称继续搜索</small>
+                  )}
+                  {reusableTags.length === 0 && (
+                    <small>
+                      {cleanTag(tagDraft)
+                        ? "没有匹配项，按 Enter 创建新标签"
+                        : "保存过的标签会显示在这里"}
+                    </small>
+                  )}
                 </div>
-                {isEditingCommonTags && <TagLibrary tags={availableTags} disabled={isSaving} onChange={onTagsChange} onBusyChange={(busy) => { tagBusyRef.current = busy; setIsUpdatingTags(busy); }} />}
+                {isEditingCommonTags && (
+                  <TagLibrary
+                    tags={availableTags}
+                    disabled={isSaving}
+                    onChange={onTagsChange}
+                    onBusyChange={(busy) => {
+                      tagBusyRef.current = busy;
+                      setIsUpdatingTags(busy);
+                    }}
+                  />
+                )}
               </div>
             </section>
 
-            <section className="form-section image-form-section" tabIndex={0} onPaste={handleImagePaste} aria-label="笔记图片，可按 Ctrl+V 添加剪贴板图片">
-              <div className="form-section-title"><span>05</span><strong>图片</strong><small>{images.length} 张</small></div>
+            <section
+              className="form-section image-form-section"
+              tabIndex={0}
+              onPaste={handleImagePaste}
+              aria-label="笔记图片，可按 Ctrl+V 添加剪贴板图片"
+            >
+              <div className="form-section-title">
+                <span>05</span>
+                <strong>图片</strong>
+                <small>{images.length} 张</small>
+              </div>
               <div className="continuous-capture-tip">
-                {screenshotShortcut ? screenshotShortcut.split("+").map((key, index) => (
-                  <span className="shortcut-key-group" key={`${key}-${index}`}>
-                    {index > 0 && <i>+</i>}<span className="shortcut-key">{key}</span>
-                  </span>
-                )) : <span className="shortcut-unbound">未绑定</span>}
-                <p>{screenshotShortcut ? "编辑期间可连续截图，新图片会自动追加到当前笔记" : "可在设置中绑定截图快捷键"}</p>
+                {screenshotShortcut ? (
+                  screenshotShortcut.split("+").map((key, index) => (
+                    <span className="shortcut-key-group" key={`${key}-${index}`}>
+                      {index > 0 && <i>+</i>}
+                      <span className="shortcut-key">{key}</span>
+                    </span>
+                  ))
+                ) : (
+                  <span className="shortcut-unbound">未绑定</span>
+                )}
+                <p>
+                  {screenshotShortcut
+                    ? "编辑期间可连续截图，新图片会自动追加到当前笔记"
+                    : "可在设置中绑定截图快捷键"}
+                </p>
               </div>
               <div className="image-import-actions">
                 <button
@@ -510,14 +708,23 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                   <span>{isPickingImages ? "正在打开选择器…" : "添加图片"}</span>
                   <small>PNG / JPG / JPEG / WEBP，可多选</small>
                 </button>
-                <button type="button" className="add-images-button" onClick={() => void handleImportClipboard()} disabled={isSaving || isPickingImages || isImportingClipboard}>
+                <button
+                  type="button"
+                  className="add-images-button"
+                  onClick={() => void handleImportClipboard()}
+                  disabled={isSaving || isPickingImages || isImportingClipboard}
+                >
                   <ImageIcon />
                   <span>{isImportingClipboard ? "正在读取剪贴板…" : "从剪贴板添加"}</span>
                   <small>微信 / QQ 截图后复制，在此按 Ctrl+V</small>
                 </button>
               </div>
 
-              {imageError && <div className="form-submit-error" role="alert">{imageError}</div>}
+              {imageError && (
+                <div className="form-submit-error" role="alert">
+                  {imageError}
+                </div>
+              )}
 
               {images.length > 0 && (
                 <div className="editor-image-list">
@@ -526,29 +733,72 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
                       <div className="editor-image-thumb">
                         {image.previewPath ? (
                           <img src={convertFileSrc(image.previewPath)} alt="" />
-                        ) : <ImageIcon />}
+                        ) : (
+                          <ImageIcon />
+                        )}
                       </div>
                       <div className="editor-image-info">
-                        <input className="image-name-input" aria-label={`图片 ${index + 1} 名称`} placeholder={`图片 ${index + 1} · ${image.imageType}`} maxLength={80}
-                          value={image.displayName} disabled={isSaving} onChange={(event) => {
+                        <input
+                          className="image-name-input"
+                          aria-label={`图片 ${index + 1} 名称`}
+                          placeholder={`图片 ${index + 1} · ${image.imageType}`}
+                          maxLength={80}
+                          value={image.displayName}
+                          disabled={isSaving}
+                          onChange={(event) => {
                             const displayName = event.target.value;
-                            setImages((current) => current.map((item) => item.key === image.key ? { ...item, displayName } : item));
-                          }} />
+                            setImages((current) =>
+                              current.map((item) =>
+                                item.key === image.key ? { ...item, displayName } : item,
+                              ),
+                            );
+                          }}
+                        />
                         <select
                           className="image-type-select"
                           value={image.imageType}
-                          onChange={(event) => setImageType(image.key, event.target.value as ImageType)}
+                          onChange={(event) =>
+                            setImageType(image.key, event.target.value as ImageType)
+                          }
                           disabled={isSaving}
                           aria-label={`图片 ${index + 1} 类型`}
                         >
-                          {IMAGE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                          {IMAGE_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
                         </select>
-                        <span>{image.existingId !== undefined ? "已保存" : "保存笔记后复制到应用目录"}</span>
+                        <span>
+                          {image.existingId !== undefined ? "已保存" : "保存笔记后复制到应用目录"}
+                        </span>
                       </div>
                       <div className="editor-image-actions">
-                        <button type="button" onClick={() => moveImage(index, -1)} disabled={index === 0 || isSaving} aria-label="上移图片">↑</button>
-                        <button type="button" onClick={() => moveImage(index, 1)} disabled={index === images.length - 1 || isSaving} aria-label="下移图片">↓</button>
-                        <button type="button" className="remove-image" onClick={() => removeImage(image.key)} disabled={isSaving} aria-label="删除图片"><TrashIcon /></button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(index, -1)}
+                          disabled={index === 0 || isSaving}
+                          aria-label="上移图片"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(index, 1)}
+                          disabled={index === images.length - 1 || isSaving}
+                          aria-label="下移图片"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="remove-image"
+                          onClick={() => removeImage(image.key)}
+                          disabled={isSaving}
+                          aria-label="删除图片"
+                        >
+                          <TrashIcon />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -557,14 +807,29 @@ export function NoteEditor({ mode, note, maps, capturedImagePaths = [], availabl
               )}
             </section>
 
-            {error && <div className="form-submit-error" role="alert">{error}</div>}
+            {error && (
+              <div className="form-submit-error" role="alert">
+                {error}
+              </div>
+            )}
           </div>
 
           <footer className="editor-footer">
             <span>{mode === "edit" ? "保存后详情会立即更新" : "保存后将自动选中新笔记"}</span>
             <div>
-              <button type="button" className="secondary-button" onClick={onClose} disabled={isSaving || isPickingImages || isUpdatingTags}>取消</button>
-              <button type="submit" className="primary-button editor-save" disabled={isSaving || isPickingImages || isImportingClipboard || isUpdatingTags}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onClose}
+                disabled={isSaving || isPickingImages || isUpdatingTags}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className="primary-button editor-save"
+                disabled={isSaving || isPickingImages || isImportingClipboard || isUpdatingTags}
+              >
                 {isSaving && <span className="button-spinner" />}
                 {isSaving ? "正在保存" : "保存笔记"}
               </button>

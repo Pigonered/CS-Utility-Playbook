@@ -21,15 +21,15 @@ export const notesApi = {
   getNote: (id: number) => invokeDatabase<Note | null>("get_note", { id }),
   createNote: (input: NoteInput) => invokeDatabase<Note>("create_note", { input }),
   updateNote: (id: number, input: NoteInput) => invokeDatabase<Note>("update_note", { id, input }),
-  saveNoteWithImages: (id: number | null, input: NoteInput, imageItems: NoteImageInput[]) => (
-    invokeDatabase<Note>("save_note_with_images", { id, input, imageItems })
-  ),
+  saveNoteWithImages: (id: number | null, input: NoteInput, imageItems: NoteImageInput[]) =>
+    invokeDatabase<Note>("save_note_with_images", { id, input, imageItems }),
   deleteNote: (id: number) => invokeDatabase<void>("delete_note", { id }),
-  saveImageAnnotation: (imageId: number, pngData: string | null, annotationData: string | null) => (
-    invokeDatabase<Note>("save_image_annotation", { imageId, pngData, annotationData })
-  ),
-  getTags: () => invokeDatabase<Tag[]>("initialize_tag_library", { commonTags: loadLegacyCommonTags() }),
+  saveImageAnnotation: (imageId: number, pngData: string | null, annotationData: string | null) =>
+    invokeDatabase<Note>("save_image_annotation", { imageId, pngData, annotationData }),
+  getTags: () =>
+    invokeDatabase<Tag[]>("initialize_tag_library", { commonTags: loadLegacyCommonTags() }),
   createTag: (name: string) => invokeDatabase<Tag>("create_tag", { name }),
-  setTagFavorite: (name: string, favorite: boolean) => invokeDatabase<Tag[]>("set_tag_favorite", { name, favorite }),
+  setTagFavorite: (name: string, favorite: boolean) =>
+    invokeDatabase<Tag[]>("set_tag_favorite", { name, favorite }),
   deleteUnusedTag: (id: number) => invokeDatabase<Tag[]>("delete_unused_tag", { id }),
 };

@@ -11,7 +11,13 @@ export async function importClipboardImage(): Promise<ClipboardImage> {
   try {
     return await invoke<ClipboardImage>("import_clipboard_image");
   } catch (error) {
-    throw new Error(typeof error === "string" ? error : error instanceof Error ? error.message : "无法读取剪贴板图片");
+    throw new Error(
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : "无法读取剪贴板图片",
+    );
   }
 }
 

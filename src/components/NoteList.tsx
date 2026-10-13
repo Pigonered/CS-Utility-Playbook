@@ -11,7 +11,15 @@ interface NoteListProps {
   onRetry: () => void;
 }
 
-export function NoteList({ notes, selectedId, onSelect, hasActiveSearch, isLoading, error, onRetry }: NoteListProps) {
+export function NoteList({
+  notes,
+  selectedId,
+  onSelect,
+  hasActiveSearch,
+  isLoading,
+  error,
+  onRetry,
+}: NoteListProps) {
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -28,7 +36,9 @@ export function NoteList({ notes, selectedId, onSelect, hasActiveSearch, isLoadi
         <div className="list-status error-state">
           <strong>无法读取笔记</strong>
           <p>{error}</p>
-          <button type="button" className="secondary-button" onClick={onRetry}>重试</button>
+          <button type="button" className="secondary-button" onClick={onRetry}>
+            重试
+          </button>
         </div>
       );
     }
@@ -37,7 +47,11 @@ export function NoteList({ notes, selectedId, onSelect, hasActiveSearch, isLoadi
       return (
         <div className="empty-list">
           <span>{hasActiveSearch ? "没有找到笔记" : "还没有笔记"}</span>
-          <p>{hasActiveSearch ? "试试调整搜索内容或清除筛选条件。" : "点击「新建笔记」开始记录你的第一个瞄点"}</p>
+          <p>
+            {hasActiveSearch
+              ? "试试调整搜索内容或清除筛选条件。"
+              : "点击「新建笔记」开始记录你的第一个瞄点"}
+          </p>
         </div>
       );
     }
@@ -65,9 +79,7 @@ export function NoteList({ notes, selectedId, onSelect, hasActiveSearch, isLoadi
           <option value="title">按标题</option>
         </select>
       </div>
-      <div className="note-list">
-        {renderContent()}
-      </div>
+      <div className="note-list">{renderContent()}</div>
     </section>
   );
 }

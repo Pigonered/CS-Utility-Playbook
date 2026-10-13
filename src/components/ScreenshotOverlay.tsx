@@ -78,7 +78,8 @@ export function ScreenshotOverlay() {
         return;
       }
       unlisten = stopListening;
-      void screenshotApi.getSession()
+      void screenshotApi
+        .getSession()
         .then(prepareSession)
         .catch(() => undefined);
     });
@@ -86,7 +87,8 @@ export function ScreenshotOverlay() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (captureIdRef.current !== null) void screenshotApi.cancel(captureIdRef.current).catch(() => undefined);
+        if (captureIdRef.current !== null)
+          void screenshotApi.cancel(captureIdRef.current).catch(() => undefined);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -162,7 +164,9 @@ export function ScreenshotOverlay() {
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {session && <img className="capture-background" src={session.imageUrl} alt="" draggable={false} />}
+      {session && (
+        <img className="capture-background" src={session.imageUrl} alt="" draggable={false} />
+      )}
       {!selection && <div className="capture-idle-mask" />}
       {selection && (
         <div
@@ -175,7 +179,9 @@ export function ScreenshotOverlay() {
           }}
         >
           {selection.width >= 90 && selection.height >= 38 && (
-            <span>{Math.round(selection.width)} × {Math.round(selection.height)}</span>
+            <span>
+              {Math.round(selection.width)} × {Math.round(selection.height)}
+            </span>
           )}
         </div>
       )}
@@ -183,7 +189,11 @@ export function ScreenshotOverlay() {
         <strong>{isCompleting ? "正在保存截图…" : "拖动鼠标选择区域"}</strong>
         <span>按 Esc 取消</span>
       </div>
-      {error && <div className="capture-error" role="alert">{error}</div>}
+      {error && (
+        <div className="capture-error" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

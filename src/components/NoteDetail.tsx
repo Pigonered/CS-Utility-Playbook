@@ -14,8 +14,21 @@ interface NoteDetailProps {
   onAnnotate: (image: NoteImage) => void;
 }
 
-function DetailField({ label, value, wrap = false }: { label: string; value: string; wrap?: boolean }) {
-  return <div className={`detail-field${wrap ? " detail-field-wrap" : ""}`}><span>{label}</span><strong>{value || "—"}</strong></div>;
+function DetailField({
+  label,
+  value,
+  wrap = false,
+}: {
+  label: string;
+  value: string;
+  wrap?: boolean;
+}) {
+  return (
+    <div className={`detail-field${wrap ? " detail-field-wrap" : ""}`}>
+      <span>{label}</span>
+      <strong>{value || "—"}</strong>
+    </div>
+  );
 }
 
 function formatUpdatedAt(value: string): string {
@@ -29,7 +42,16 @@ function formatUpdatedAt(value: string): string {
   }).format(date);
 }
 
-export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelete, onTagSelect, onAnnotate }: NoteDetailProps) {
+export function NoteDetail({
+  note,
+  isLoading,
+  error,
+  isDeleting,
+  onEdit,
+  onDelete,
+  onTagSelect,
+  onAnnotate,
+}: NoteDetailProps) {
   const [viewerImage, setViewerImage] = useState<{ path: string; name: string } | null>(null);
   const [viewerScale, setViewerScale] = useState(1);
   const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
@@ -116,13 +138,26 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
     <main className="note-detail">
       <header className="detail-header">
         <div>
-          <span className="breadcrumb">{note.mapName} / {note.side} / {grenadeTypeLabel(note.grenadeType)}</span>
+          <span className="breadcrumb">
+            {note.mapName} / {note.side} / {grenadeTypeLabel(note.grenadeType)}
+          </span>
           <h1>{note.title}</h1>
           <span className="updated-at">更新于 {formatUpdatedAt(note.updatedAt)}</span>
         </div>
         <div className="detail-actions">
-          <button type="button" className="secondary-button" onClick={onEdit}><PencilIcon />编辑</button>
-          <button type="button" className="icon-button danger" onClick={onDelete} disabled={isDeleting} aria-label="删除笔记"><TrashIcon /></button>
+          <button type="button" className="secondary-button" onClick={onEdit}>
+            <PencilIcon />
+            编辑
+          </button>
+          <button
+            type="button"
+            className="icon-button danger"
+            onClick={onDelete}
+            disabled={isDeleting}
+            aria-label="删除笔记"
+          >
+            <TrashIcon />
+          </button>
         </div>
       </header>
 
@@ -137,7 +172,10 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
         </section>
 
         <section className="content-section image-section">
-          <div className="content-heading"><span>图片步骤</span><small>{note.images.length} 张图片</small></div>
+          <div className="content-heading">
+            <span>图片步骤</span>
+            <small>{note.images.length} 张图片</small>
+          </div>
           {note.images.length > 0 ? (
             <div className="image-gallery">
               {note.images.map((image, index) => (
@@ -145,37 +183,87 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
                   <button
                     type="button"
                     className="note-image-preview"
-                    onClick={() => openViewer(image.annotatedPath ?? image.imagePath, image.displayName || `图片 ${index + 1} · ${image.imageType}`)}
+                    onClick={() =>
+                      openViewer(
+                        image.annotatedPath ?? image.imagePath,
+                        image.displayName || `图片 ${index + 1} · ${image.imageType}`,
+                      )
+                    }
                     title="点击查看大图"
                   >
-                    <img src={convertFileSrc(image.annotatedPath ?? image.imagePath)} alt={image.displayName || `${note.title} ${image.imageType}图 ${index + 1}`} />
+                    <img
+                      src={convertFileSrc(image.annotatedPath ?? image.imagePath)}
+                      alt={image.displayName || `${note.title} ${image.imageType}图 ${index + 1}`}
+                    />
                   </button>
                   <footer>
-                    <span title={image.displayName || `图片 ${index + 1} · ${image.imageType}`}><ImageIcon /><strong className="note-image-name">{image.displayName || `图片 ${index + 1}`}</strong><small>{image.imageType}</small>{image.annotatedPath && <i>已标注</i>}</span>
+                    <span title={image.displayName || `图片 ${index + 1} · ${image.imageType}`}>
+                      <ImageIcon />
+                      <strong className="note-image-name">
+                        {image.displayName || `图片 ${index + 1}`}
+                      </strong>
+                      <small>{image.imageType}</small>
+                      {image.annotatedPath && <i>已标注</i>}
+                    </span>
                     <div>
-                      <button type="button" onClick={() => openViewer(image.annotatedPath ?? image.imagePath, image.displayName || `图片 ${index + 1} · ${image.imageType}`)}>查看</button>
-                      <button type="button" className="annotate-button" onClick={() => onAnnotate(image)}>编辑图片</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openViewer(
+                            image.annotatedPath ?? image.imagePath,
+                            image.displayName || `图片 ${index + 1} · ${image.imageType}`,
+                          )
+                        }
+                      >
+                        查看
+                      </button>
+                      <button
+                        type="button"
+                        className="annotate-button"
+                        onClick={() => onAnnotate(image)}
+                      >
+                        编辑图片
+                      </button>
                     </div>
                   </footer>
                 </article>
               ))}
             </div>
-          ) : <div className="empty-images"><ImageIcon /><span>暂未添加图片</span><small>点击「编辑」可以导入本地图片</small></div>}
+          ) : (
+            <div className="empty-images">
+              <ImageIcon />
+              <span>暂未添加图片</span>
+              <small>点击「编辑」可以导入本地图片</small>
+            </div>
+          )}
         </section>
 
         <section className="content-section description-section">
-          <div className="content-heading"><span>笔记说明</span></div>
+          <div className="content-heading">
+            <span>笔记说明</span>
+          </div>
           <p>{note.description || "暂无描述"}</p>
         </section>
 
         <section className="content-section tags-section">
-          <div className="content-heading"><span>标签</span></div>
+          <div className="content-heading">
+            <span>标签</span>
+          </div>
           <div className="tag-list">
-            {note.tags.length > 0 ? note.tags.map((tag) => (
-              <button type="button" key={tag.id} onClick={() => onTagSelect(tag.name)} title={`筛选标签：${tag.name}`}>
-                #{tag.name}
-              </button>
-            )) : <small>暂无标签</small>}
+            {note.tags.length > 0 ? (
+              note.tags.map((tag) => (
+                <button
+                  type="button"
+                  key={tag.id}
+                  onClick={() => onTagSelect(tag.name)}
+                  title={`筛选标签：${tag.name}`}
+                >
+                  #{tag.name}
+                </button>
+              ))
+            ) : (
+              <small>暂无标签</small>
+            )}
           </div>
         </section>
       </div>
@@ -191,13 +279,17 @@ export function NoteDetail({ note, isLoading, error, isDeleting, onEdit, onDelet
             if (event.target === event.currentTarget) closeViewer();
           }}
         >
-          <button type="button" onClick={closeViewer} aria-label="关闭大图"><CloseIcon /></button>
+          <button type="button" onClick={closeViewer} aria-label="关闭大图">
+            <CloseIcon />
+          </button>
           <div className="image-viewer-name">{viewerImage.name}</div>
           <img
             src={convertFileSrc(viewerImage.path)}
             alt={viewerImage.name}
             draggable={false}
-            style={{ transform: `translate(${viewerOffset.x}px, ${viewerOffset.y}px) scale(${viewerScale})` }}
+            style={{
+              transform: `translate(${viewerOffset.x}px, ${viewerOffset.y}px) scale(${viewerScale})`,
+            }}
           />
           <div className="image-viewer-zoom" role="status">
             <strong>{Math.round(viewerScale * 100)}%</strong>

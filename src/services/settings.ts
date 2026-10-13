@@ -25,18 +25,13 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const settingsApi = {
   get: () => call<AppSettings>("get_settings"),
-  setScreenshotShortcut: (shortcut: string | null) => (
-    call<AppSettings>("set_screenshot_shortcut", { shortcut })
-  ),
-  setCloseToTray: (enabled: boolean) => (
-    call<AppSettings>("set_close_to_tray", { enabled })
-  ),
-  setOpenNoteAfterCapture: (enabled: boolean) => (
-    call<AppSettings>("set_open_note_after_capture", { enabled })
-  ),
-  setHideBeforeCapture: (enabled: boolean) => (
-    call<AppSettings>("set_hide_before_capture", { enabled })
-  ),
+  setScreenshotShortcut: (shortcut: string | null) =>
+    call<AppSettings>("set_screenshot_shortcut", { shortcut }),
+  setCloseToTray: (enabled: boolean) => call<AppSettings>("set_close_to_tray", { enabled }),
+  setOpenNoteAfterCapture: (enabled: boolean) =>
+    call<AppSettings>("set_open_note_after_capture", { enabled }),
+  setHideBeforeCapture: (enabled: boolean) =>
+    call<AppSettings>("set_hide_before_capture", { enabled }),
   chooseDataDirectory: async () => {
     const selected = await open({
       title: "选择笔记和图片的保存文件夹",
@@ -45,7 +40,6 @@ export const settingsApi = {
     });
     return typeof selected === "string" ? selected : null;
   },
-  changeDataDirectory: (destination: string) => (
-    call<void>("change_data_directory", { destination })
-  ),
+  changeDataDirectory: (destination: string) =>
+    call<void>("change_data_directory", { destination }),
 };

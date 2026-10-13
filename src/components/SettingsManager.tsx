@@ -11,7 +11,15 @@ interface SettingsManagerProps {
   onRestored: (result: BackupOperationResult) => Promise<void>;
 }
 
-type BusyAction = "directory" | "shortcut" | "background" | "captureNavigation" | "captureHiding" | "export" | "restore" | null;
+type BusyAction =
+  | "directory"
+  | "shortcut"
+  | "background"
+  | "captureNavigation"
+  | "captureHiding"
+  | "export"
+  | "restore"
+  | null;
 type SettingsView = "settings" | "about";
 
 function formatDate(value: string | null): string {
@@ -67,14 +75,25 @@ function shortcutFromEvent(event: ReactKeyboardEvent<HTMLButtonElement>): string
 
 function ShortcutKeys({ shortcut }: { shortcut: string | null }) {
   if (!shortcut) return <span className="shortcut-unbound">未绑定</span>;
-  return <>{shortcut.split("+").map((key, index) => (
-    <span className="shortcut-key-group" key={`${key}-${index}`}>
-      {index > 0 && <i>+</i>}<span className="shortcut-key">{key}</span>
-    </span>
-  ))}</>;
+  return (
+    <>
+      {shortcut.split("+").map((key, index) => (
+        <span className="shortcut-key-group" key={`${key}-${index}`}>
+          {index > 0 && <i>+</i>}
+          <span className="shortcut-key">{key}</span>
+        </span>
+      ))}
+    </>
+  );
 }
 
-export function SettingsManager({ settings, initialView = "settings", onSettingsChange, onClose, onRestored }: SettingsManagerProps) {
+export function SettingsManager({
+  settings,
+  initialView = "settings",
+  onSettingsChange,
+  onClose,
+  onRestored,
+}: SettingsManagerProps) {
   const [activeView, setActiveView] = useState<SettingsView>(initialView);
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -194,7 +213,9 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
     try {
       const next = await settingsApi.setOpenNoteAfterCapture(!settings.openNoteAfterCapture);
       onSettingsChange(next);
-      setMessage(next.openNoteAfterCapture ? "截图后将立即打开笔记界面" : "截图后将继续停留在当前窗口");
+      setMessage(
+        next.openNoteAfterCapture ? "截图后将立即打开笔记界面" : "截图后将继续停留在当前窗口",
+      );
     } catch (settingsError) {
       setError(settingsError instanceof Error ? settingsError.message : "无法修改截图跳转设置");
     } finally {
@@ -223,11 +244,15 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
     setMessage(null);
     const selected = await backupApi.chooseExportPath();
     if (!selected) return;
-    const destination = selected.toLocaleLowerCase().endsWith(".zip") ? selected : `${selected}.zip`;
+    const destination = selected.toLocaleLowerCase().endsWith(".zip")
+      ? selected
+      : `${selected}.zip`;
     setBusy("export");
     try {
       const result = await backupApi.exportBackup(destination);
-      setMessage(`备份已导出：${fileName(result.path)}（${result.noteCount} 条笔记，${result.imageCount} 张图片）`);
+      setMessage(
+        `备份已导出：${fileName(result.path)}（${result.noteCount} 条笔记，${result.imageCount} 张图片）`,
+      );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "导出备份失败");
     } finally {
@@ -264,18 +289,37 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
   };
 
   return (
-    <div className="settings-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !busy && !isBinding) onClose();
-    }}>
-      <section className="settings-manager" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div
+      className="settings-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy && !isBinding) onClose();
+      }}
+    >
+      <section
+        className="settings-manager"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
         <header className="settings-header">
-          <div className="settings-title-icon"><SettingsIcon /></div>
+          <div className="settings-title-icon">
+            <SettingsIcon />
+          </div>
           <div>
             <span className="eyebrow">应用设置</span>
             <h2 id="settings-title">设置</h2>
             <p>管理数据位置、截图快捷键与备份</p>
           </div>
-          <button type="button" className="editor-close" onClick={onClose} disabled={Boolean(busy) || isBinding} aria-label="关闭设置"><CloseIcon /></button>
+          <button
+            type="button"
+            className="editor-close"
+            onClick={onClose}
+            disabled={Boolean(busy) || isBinding}
+            aria-label="关闭设置"
+          >
+            <CloseIcon />
+          </button>
         </header>
 
         <div className="settings-body">
@@ -286,7 +330,8 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
               onClick={() => setActiveView("settings")}
               aria-current={activeView === "settings" ? "page" : undefined}
             >
-              <SettingsIcon /><span>设置</span>
+              <SettingsIcon />
+              <span>设置</span>
             </button>
             <button
               type="button"
@@ -294,169 +339,330 @@ export function SettingsManager({ settings, initialView = "settings", onSettings
               onClick={() => setActiveView("about")}
               aria-current={activeView === "about" ? "page" : undefined}
             >
-              <InfoIcon /><span>关于</span>
+              <InfoIcon />
+              <span>关于</span>
             </button>
           </nav>
 
-          {activeView === "settings" ? <div className="settings-content">
-          <section className="settings-section">
-            <div className="settings-section-heading"><SettingsIcon /><div><strong>常规设置</strong><small>后台运行、存储与快捷键</small></div></div>
-            <div className="settings-card">
-              <div className="setting-row background-setting-row">
-                <div><strong>关闭时放到后台</strong><p>关闭主窗口后继续运行，截图快捷键仍然可用</p></div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={settings.closeToTray}
-                  className={settings.closeToTray ? "settings-switch active" : "settings-switch"}
-                  onClick={() => void toggleCloseToTray()}
-                  disabled={Boolean(busy)}
-                >
-                  <span className="settings-switch-track"><i /></span>
-                  <strong>{settings.closeToTray ? "已开启" : "已关闭"}</strong>
-                </button>
-              </div>
-              <small className="setting-help">默认开启。隐藏后可左键点击系统托盘图标重新打开，或从托盘菜单彻底退出。</small>
-            </div>
-            <div className="settings-card">
-              <div className="setting-row">
-                <div><strong>截图时隐藏应用</strong><p>截图前自动隐藏当前界面，保留未保存的编辑内容</p></div>
-                <button type="button" role="switch" aria-label="截图时隐藏应用" aria-checked={settings.hideBeforeCapture}
-                  className={settings.hideBeforeCapture ? "settings-switch active" : "settings-switch"}
-                  onClick={() => void toggleHideBeforeCapture()} disabled={Boolean(busy)}>
-                  <span className="settings-switch-track"><i /></span>
-                  <strong>{settings.hideBeforeCapture ? "已开启" : "已关闭"}</strong>
-                </button>
-              </div>
-              <small className="setting-help">默认开启。取消或失败时恢复原窗口状态；截图成功后按下方跳转设置处理。</small>
-            </div>
-            <div className="settings-card">
-              <div className="setting-row capture-navigation-setting-row">
-                <div><strong>截图后跳转到笔记界面</strong><p>完成区域截图后立即打开笔记编辑界面</p></div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={settings.openNoteAfterCapture}
-                  className={settings.openNoteAfterCapture ? "settings-switch active" : "settings-switch"}
-                  onClick={() => void toggleOpenNoteAfterCapture()}
-                  disabled={Boolean(busy)}
-                >
-                  <span className="settings-switch-track"><i /></span>
-                  <strong>{settings.openNoteAfterCapture ? "已开启" : "已关闭"}</strong>
-                </button>
-              </div>
-              <small className="setting-help">默认开启。关闭后截图仍会追加到待编辑笔记，但不会打断游戏；稍后打开应用即可继续编辑。</small>
-            </div>
-            <div className="settings-card">
-              <div className="setting-row storage-setting-row">
-                <div><strong>图片及笔记保存位置</strong><p title={settings.dataDirectory}>{settings.dataDirectory || "正在读取…"}</p></div>
-                <button type="button" className="secondary-button" onClick={() => void changeDirectory()} disabled={Boolean(busy)}>更改位置</button>
-              </div>
-              <small className="setting-help">更改时会复制数据库和图片并自动重启；为避免覆盖，请选择未包含笔记本数据的目录。</small>
-            </div>
-            <div className="settings-card">
-              <div className="setting-row shortcut-setting-row">
-                <div><strong>全局截图快捷键</strong><p>在任意窗口中启动区域截图</p></div>
-                <button
-                  ref={shortcutButtonRef}
-                  type="button"
-                  className={isBinding ? "shortcut-binding active" : "shortcut-binding"}
-                  onClick={() => void beginShortcutBinding()}
-                  onKeyDown={(event) => void bindShortcut(event)}
-                  disabled={Boolean(busy)}
-                >
-                  {isBinding ? <span>请按下新快捷键</span> : <ShortcutKeys shortcut={settings.screenshotShortcut} />}
-                </button>
-              </div>
-              <small className="setting-help">左键点击按键框开始绑定；绑定状态下按 Esc 解除快捷键。</small>
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <div className="settings-section-heading"><DatabaseIcon /><div><strong>数据安全</strong><small>自动备份、导出与恢复</small></div></div>
-            <section className="backup-card automatic-backup-card">
-              <div className="backup-card-heading"><div><span>自动备份</span><small>自动执行</small></div><strong className="status-badge">已启用</strong></div>
-              <p>应用启动时每天检查一次，只保留最近 {status?.automaticBackupLimit ?? 7} 份。</p>
-              <dl>
-                <div><dt>最近备份</dt><dd>{status ? formatDate(status.latestAutomaticBackupAt) : "正在读取…"}</dd></div>
-                <div><dt>现有数量</dt><dd>{status ? `${status.automaticBackupCount} 份` : "—"}</dd></div>
-              </dl>
-            </section>
-            <div className="settings-backup-grid">
-              <section className="backup-card">
-                <div className="backup-card-heading"><div><span>导出笔记库</span><small>导出备份</small></div></div>
-                <p>生成包含数据库、原图、标注图和版本信息的压缩备份。</p>
-                <button type="button" className="secondary-button backup-action-button" onClick={() => void exportBackup()} disabled={Boolean(busy)}>
-                  {busy === "export" && <span className="button-spinner dark" />}{busy === "export" ? "正在导出…" : "选择位置并导出"}
-                </button>
-              </section>
-              <section className="backup-card restore-card">
-                <div className="backup-card-heading"><div><span>恢复备份</span><small>完整恢复</small></div><strong className="warning-badge">完整覆盖</strong></div>
-                <p>恢复前会自动保存当前数据，备份内容将完整覆盖当前笔记库。</p>
-                <button type="button" className="secondary-button backup-action-button" onClick={() => void chooseRestore()} disabled={Boolean(busy)}>选择备份文件</button>
-                {restorePath && (
-                  <div className="restore-confirmation">
-                    <strong>{fileName(restorePath)}</strong>
-                    <ul><li>当前数据库和图片将替换为备份内容。</li><li>系统会先创建一份恢复前备份。</li></ul>
-                    <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={Boolean(busy)} />我了解这是完整覆盖恢复</label>
-                    <button type="button" className="danger-button" onClick={() => void restoreBackup()} disabled={!confirmed || Boolean(busy)}>{busy === "restore" ? "正在验证并恢复…" : "确认完整恢复"}</button>
+          {activeView === "settings" ? (
+            <div className="settings-content">
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <SettingsIcon />
+                  <div>
+                    <strong>常规设置</strong>
+                    <small>后台运行、存储与快捷键</small>
                   </div>
-                )}
+                </div>
+                <div className="settings-card">
+                  <div className="setting-row background-setting-row">
+                    <div>
+                      <strong>关闭时放到后台</strong>
+                      <p>关闭主窗口后继续运行，截图快捷键仍然可用</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={settings.closeToTray}
+                      className={
+                        settings.closeToTray ? "settings-switch active" : "settings-switch"
+                      }
+                      onClick={() => void toggleCloseToTray()}
+                      disabled={Boolean(busy)}
+                    >
+                      <span className="settings-switch-track">
+                        <i />
+                      </span>
+                      <strong>{settings.closeToTray ? "已开启" : "已关闭"}</strong>
+                    </button>
+                  </div>
+                  <small className="setting-help">
+                    默认开启。隐藏后可左键点击系统托盘图标重新打开，或从托盘菜单彻底退出。
+                  </small>
+                </div>
+                <div className="settings-card">
+                  <div className="setting-row">
+                    <div>
+                      <strong>截图时隐藏应用</strong>
+                      <p>截图前自动隐藏当前界面，保留未保存的编辑内容</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label="截图时隐藏应用"
+                      aria-checked={settings.hideBeforeCapture}
+                      className={
+                        settings.hideBeforeCapture ? "settings-switch active" : "settings-switch"
+                      }
+                      onClick={() => void toggleHideBeforeCapture()}
+                      disabled={Boolean(busy)}
+                    >
+                      <span className="settings-switch-track">
+                        <i />
+                      </span>
+                      <strong>{settings.hideBeforeCapture ? "已开启" : "已关闭"}</strong>
+                    </button>
+                  </div>
+                  <small className="setting-help">
+                    默认开启。取消或失败时恢复原窗口状态；截图成功后按下方跳转设置处理。
+                  </small>
+                </div>
+                <div className="settings-card">
+                  <div className="setting-row capture-navigation-setting-row">
+                    <div>
+                      <strong>截图后跳转到笔记界面</strong>
+                      <p>完成区域截图后立即打开笔记编辑界面</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={settings.openNoteAfterCapture}
+                      className={
+                        settings.openNoteAfterCapture ? "settings-switch active" : "settings-switch"
+                      }
+                      onClick={() => void toggleOpenNoteAfterCapture()}
+                      disabled={Boolean(busy)}
+                    >
+                      <span className="settings-switch-track">
+                        <i />
+                      </span>
+                      <strong>{settings.openNoteAfterCapture ? "已开启" : "已关闭"}</strong>
+                    </button>
+                  </div>
+                  <small className="setting-help">
+                    默认开启。关闭后截图仍会追加到待编辑笔记，但不会打断游戏；稍后打开应用即可继续编辑。
+                  </small>
+                </div>
+                <div className="settings-card">
+                  <div className="setting-row storage-setting-row">
+                    <div>
+                      <strong>图片及笔记保存位置</strong>
+                      <p title={settings.dataDirectory}>{settings.dataDirectory || "正在读取…"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => void changeDirectory()}
+                      disabled={Boolean(busy)}
+                    >
+                      更改位置
+                    </button>
+                  </div>
+                  <small className="setting-help">
+                    更改时会复制数据库和图片并自动重启；为避免覆盖，请选择未包含笔记本数据的目录。
+                  </small>
+                </div>
+                <div className="settings-card">
+                  <div className="setting-row shortcut-setting-row">
+                    <div>
+                      <strong>全局截图快捷键</strong>
+                      <p>在任意窗口中启动区域截图</p>
+                    </div>
+                    <button
+                      ref={shortcutButtonRef}
+                      type="button"
+                      className={isBinding ? "shortcut-binding active" : "shortcut-binding"}
+                      onClick={() => void beginShortcutBinding()}
+                      onKeyDown={(event) => void bindShortcut(event)}
+                      disabled={Boolean(busy)}
+                    >
+                      {isBinding ? (
+                        <span>请按下新快捷键</span>
+                      ) : (
+                        <ShortcutKeys shortcut={settings.screenshotShortcut} />
+                      )}
+                    </button>
+                  </div>
+                  <small className="setting-help">
+                    左键点击按键框开始绑定；绑定状态下按 Esc 解除快捷键。
+                  </small>
+                </div>
               </section>
-            </div>
-          </section>
 
-          {error && <div className="backup-message error" role="alert">{error}</div>}
-          {message && <div className="backup-message success" role="status">{message}</div>}
-          </div> : <div className="settings-content about-content">
-            <section className="about-hero">
-              <div className="about-mark"><InfoIcon /></div>
-              <div>
-                <span className="eyebrow">CS UTILITY PLAYBOOK</span>
-                <h3>关于 CS道具战术本</h3>
-                <p>当前版本 <strong>0.1.4 Beta</strong></p>
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <DatabaseIcon />
+                  <div>
+                    <strong>数据安全</strong>
+                    <small>自动备份、导出与恢复</small>
+                  </div>
+                </div>
+                <section className="backup-card automatic-backup-card">
+                  <div className="backup-card-heading">
+                    <div>
+                      <span>自动备份</span>
+                      <small>自动执行</small>
+                    </div>
+                    <strong className="status-badge">已启用</strong>
+                  </div>
+                  <p>应用启动时每天检查一次，只保留最近 {status?.automaticBackupLimit ?? 7} 份。</p>
+                  <dl>
+                    <div>
+                      <dt>最近备份</dt>
+                      <dd>{status ? formatDate(status.latestAutomaticBackupAt) : "正在读取…"}</dd>
+                    </div>
+                    <div>
+                      <dt>现有数量</dt>
+                      <dd>{status ? `${status.automaticBackupCount} 份` : "—"}</dd>
+                    </div>
+                  </dl>
+                </section>
+                <div className="settings-backup-grid">
+                  <section className="backup-card">
+                    <div className="backup-card-heading">
+                      <div>
+                        <span>导出笔记库</span>
+                        <small>导出备份</small>
+                      </div>
+                    </div>
+                    <p>生成包含数据库、原图、标注图和版本信息的压缩备份。</p>
+                    <button
+                      type="button"
+                      className="secondary-button backup-action-button"
+                      onClick={() => void exportBackup()}
+                      disabled={Boolean(busy)}
+                    >
+                      {busy === "export" && <span className="button-spinner dark" />}
+                      {busy === "export" ? "正在导出…" : "选择位置并导出"}
+                    </button>
+                  </section>
+                  <section className="backup-card restore-card">
+                    <div className="backup-card-heading">
+                      <div>
+                        <span>恢复备份</span>
+                        <small>完整恢复</small>
+                      </div>
+                      <strong className="warning-badge">完整覆盖</strong>
+                    </div>
+                    <p>恢复前会自动保存当前数据，备份内容将完整覆盖当前笔记库。</p>
+                    <button
+                      type="button"
+                      className="secondary-button backup-action-button"
+                      onClick={() => void chooseRestore()}
+                      disabled={Boolean(busy)}
+                    >
+                      选择备份文件
+                    </button>
+                    {restorePath && (
+                      <div className="restore-confirmation">
+                        <strong>{fileName(restorePath)}</strong>
+                        <ul>
+                          <li>当前数据库和图片将替换为备份内容。</li>
+                          <li>系统会先创建一份恢复前备份。</li>
+                        </ul>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={confirmed}
+                            onChange={(event) => setConfirmed(event.target.checked)}
+                            disabled={Boolean(busy)}
+                          />
+                          我了解这是完整覆盖恢复
+                        </label>
+                        <button
+                          type="button"
+                          className="danger-button"
+                          onClick={() => void restoreBackup()}
+                          disabled={!confirmed || Boolean(busy)}
+                        >
+                          {busy === "restore" ? "正在验证并恢复…" : "确认完整恢复"}
+                        </button>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </section>
+
+              {error && (
+                <div className="backup-message error" role="alert">
+                  {error}
+                </div>
+              )}
+              {message && (
+                <div className="backup-message success" role="status">
+                  {message}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="settings-content about-content">
+              <section className="about-hero">
+                <div className="about-mark">
+                  <InfoIcon />
+                </div>
+                <div>
+                  <span className="eyebrow">CS UTILITY PLAYBOOK</span>
+                  <h3>关于 CS道具战术本</h3>
+                  <p>
+                    当前版本 <strong>0.1.4 Beta</strong>
+                  </p>
+                </div>
+              </section>
+
+              <div className="about-grid">
+                <section className="about-card">
+                  <span className="about-label">开发者</span>
+                  <strong>Pigonered</strong>
+                </section>
+                <section className="about-card">
+                  <span className="about-label">项目主页</span>
+                  <a
+                    href="https://github.com/Pigonered/CS-Utility-Playbook"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <GithubIcon />
+                    <span>
+                      GitHub: <code>Pigonered/CS-Utility-Playbook</code>
+                    </span>
+                  </a>
+                </section>
               </div>
-            </section>
 
-            <div className="about-grid">
-              <section className="about-card">
-                <span className="about-label">开发者</span>
-                <strong>Pigonered</strong>
+              <section className="about-section">
+                <h4>反馈与建议</h4>
+                <p>如果遇到 Bug、功能异常或有改进建议，可以通过 GitHub Issues 反馈。</p>
               </section>
-              <section className="about-card">
-                <span className="about-label">项目主页</span>
-                <a href="https://github.com/Pigonered/CS-Utility-Playbook" target="_blank" rel="noreferrer">
-                  <GithubIcon />
-                  <span>GitHub: <code>Pigonered/CS-Utility-Playbook</code></span>
-                </a>
+
+              <section className="about-section">
+                <h4>数据说明</h4>
+                <p>所有笔记、图片和设置默认保存在本地设备中。请定期备份重要数据。</p>
               </section>
+
+              <section className="about-section about-disclaimer">
+                <h4>免责声明</h4>
+                <p>
+                  本软件为独立开发的第三方工具，与 Valve Corporation 或 Counter-Strike 2
+                  官方无隶属、授权或合作关系。
+                </p>
+                <p>Counter-Strike、Counter-Strike 2 及相关商标归其各自权利人所有。</p>
+              </section>
+
+              <code className="about-tech">Built with Tauri, React, TypeScript and Rust.</code>
+
+              <blockquote className="about-beta-note">
+                当前版本处于测试阶段，功能和数据结构可能在后续版本中发生变化。
+              </blockquote>
             </div>
-
-            <section className="about-section">
-              <h4>反馈与建议</h4>
-              <p>如果遇到 Bug、功能异常或有改进建议，可以通过 GitHub Issues 反馈。</p>
-            </section>
-
-            <section className="about-section">
-              <h4>数据说明</h4>
-              <p>所有笔记、图片和设置默认保存在本地设备中。请定期备份重要数据。</p>
-            </section>
-
-            <section className="about-section about-disclaimer">
-              <h4>免责声明</h4>
-              <p>本软件为独立开发的第三方工具，与 Valve Corporation 或 Counter-Strike 2 官方无隶属、授权或合作关系。</p>
-              <p>Counter-Strike、Counter-Strike 2 及相关商标归其各自权利人所有。</p>
-            </section>
-
-            <code className="about-tech">Built with Tauri, React, TypeScript and Rust.</code>
-
-            <blockquote className="about-beta-note">当前版本处于测试阶段，功能和数据结构可能在后续版本中发生变化。</blockquote>
-          </div>}
+          )}
         </div>
 
         <footer className="settings-footer">
-          <span>{busy === "directory" ? "正在迁移数据，请勿关闭应用…" : activeView === "settings" ? "设置会自动保存" : "0.1.4 Beta"}</span>
-          <button type="button" className="secondary-button" onClick={onClose} disabled={Boolean(busy) || isBinding}>完成</button>
+          <span>
+            {busy === "directory"
+              ? "正在迁移数据，请勿关闭应用…"
+              : activeView === "settings"
+                ? "设置会自动保存"
+                : "0.1.4 Beta"}
+          </span>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onClose}
+            disabled={Boolean(busy) || isBinding}
+          >
+            完成
+          </button>
         </footer>
       </section>
     </div>

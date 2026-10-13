@@ -42,7 +42,9 @@
   z-index: 2;
   box-sizing: border-box;
   border: 2px solid #f3c243;
-  box-shadow: 0 0 0 9999px rgba(2, 5, 9, 0.48), 0 0 0 1px rgba(0, 0, 0, 0.55) inset;
+  box-shadow:
+    0 0 0 9999px rgba(2, 5, 9, 0.48),
+    0 0 0 1px rgba(0, 0, 0, 0.55) inset;
   pointer-events: none;
 }
 
@@ -54,7 +56,9 @@
   border-radius: 0 0 4px 4px;
   color: #151a20;
   background: #f3c243;
-  font: 600 12px/1.2 "Segoe UI", sans-serif;
+  font:
+    600 12px/1.2 "Segoe UI",
+    sans-serif;
   white-space: nowrap;
 }
 
@@ -98,6 +102,8 @@
   border-radius: 7px;
   color: #ffd7d7;
   background: rgba(65, 20, 23, 0.94);
-  font: 500 13px/1.4 "Segoe UI", sans-serif;
+  font:
+    500 13px/1.4 "Segoe UI",
+    sans-serif;
   pointer-events: none;
 }
